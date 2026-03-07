@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Direct Google Maps Link",
+  "version": "1.0.0",
+  "description": "Adds a direct 'Open in Google Maps' button to Google search results",
+  "permissions": [],
+  "content_scripts": [
+    {
+      "matches": ["*://*.google.com/*", "*://*.google.de/*", "*://*.google.co.uk/*", "*://*.google.fr/*", "*://*.google.it/*", "*://*.google.es/*", "*://*.google.nl/*", "*://*.google.be/*", "*://*.google.at/*", "*://*.google.pl/*", "*://*.google.se/*", "*://*.google.dk/*", "*://*.google.fi/*", "*://*.google.no/*", "*://*.google.pt/*", "*://*.google.gr/*", "*://*.google.ie/*", "*://*.google.cz/*", "*://*.google.ro/*", "*://*.google.hu/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

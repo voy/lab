@@ -1,0 +1,148 @@
+.piano-keyboard {
+  position: relative;
+  width: 100%;
+  max-width: 1400px;
+  height: 200px;
+  margin: 0 auto;
+}
+
+.white-keys {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.white-key {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 0 0 8px 8px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1rem;
+}
+
+[data-theme="dark"] .white-key {
+  background: #2a2a2a;
+  border-color: #555;
+}
+
+.white-key.selected {
+  background: #64b5f6;
+  color: #0d47a1;
+}
+
+.white-key.root {
+  border: 2px solid #42a5f5;
+  font-weight: bold;
+}
+
+.white-key.correct {
+  background: #66bb6a;
+  color: #1b5e20;
+}
+
+.white-key.incorrect {
+  background: #ef5350;
+  color: white;
+}
+
+.white-key.missed {
+  background: #ffeb3b;
+  color: #f57f17;
+  border: 2px dashed #ffc107;
+}
+
+[data-theme="dark"] .white-key.missed {
+  background: #00bcd4;
+  color: #ffffff;
+  border: 2px dashed #0097a7;
+}
+
+.white-key .note-label {
+  font-size: 1.2rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+[data-theme="dark"] .white-key .note-label {
+  color: #e0e0e0;
+}
+
+.black-keys {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 60%;
+  pointer-events: none;
+  /* Shift container slightly to align black keys with white keys */
+  transform: translateX(3.75%);
+}
+
+.black-key {
+  position: absolute;
+  width: 4.5%;
+  height: 100%;
+  background: #333;
+  border-radius: 0 0 4px 4px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.5rem;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  z-index: 1;
+}
+
+[data-theme="dark"] .black-key {
+  background: #1a1a1a;
+}
+
+.black-key.selected {
+  background: #42a5f5;
+  color: #0d47a1;
+}
+
+.black-key.correct {
+  background: #4caf50;
+  color: white;
+}
+
+.black-key.incorrect {
+  background: #e53935;
+  color: white;
+}
+
+.black-key.missed {
+  background: #fdd835;
+  color: #f57f17;
+  border: 2px dashed #fbc02d;
+}
+
+[data-theme="dark"] .black-key.missed {
+  background: #00bcd4;
+  color: #ffffff;
+  border: 2px dashed #0097a7;
+}
+
+.black-key .note-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: white;
+}
+
+.black-key.missed .note-label {
+  color: #f57f17;
+}
+
+[data-theme="dark"] .black-key.missed .note-label {
+  color: #ffffff;
+}
+

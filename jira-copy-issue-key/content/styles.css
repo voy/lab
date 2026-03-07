@@ -1,0 +1,44 @@
+/**
+ * Jira Copy Issue Key - Minimal Custom Styles
+ *
+ * Strategy: Inherit most styles from Jira's buttons
+ * Only add spacing and transition effects
+ */
+
+/* Main button styling */
+.copy-issue-key-btn {
+  margin-left: 2px !important;
+  margin-right: 0 !important;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  box-shadow: none !important;
+  vertical-align: middle !important;
+  margin-top: -5px;
+  filter: grayscale(1) brightness(0.4) !important;
+
+}
+
+/* Success state - shown briefly after copying */
+.copy-issue-key-btn.success {
+  /* Remove filter to show green checkmark in color */
+  filter: none !important;
+  border: none !important;
+  opacity: 1 !important;
+}
+
+/* Hover effect (if not inherited from Jira) */
+.copy-issue-key-btn:hover {
+  opacity: 1;
+  border: none !important;
+  filter: grayscale(1) brightness(0.4) !important;
+}
+
+/* Active/pressed state */
+.copy-issue-key-btn:active {
+  transform: scale(0.9);
+}

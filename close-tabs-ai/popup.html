@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <link rel="stylesheet" href="styles.css">
+    </head>
+    <body>
+        <div id="settingsScreen" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <button id="backBtn" title="Back">←</button>
+                <h2 style="margin: 0; flex: 1; text-align: center;">Settings</h2>
+                <div style="width: 32px;"></div>
+            </div>
+            <p style="margin-bottom: 12px; color: #666; font-size: 13px;">Enter your Gemini API key to get started. Get one at <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>.</p>
+            <div class="input-container">
+                <input type="password" id="apiKeyInput" placeholder="Enter Gemini API key">
+                <button id="saveApiKey">Save</button>
+            </div>
+        </div>
+
+        <div id="mainScreen" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h2 style="margin: 0;">Close Tabs AI</h2>
+                <button id="settingsBtn" title="Settings">⋯</button>
+            </div>
+            <div class="input-wrapper">
+                <div class="input-container">
+                    <input type="text" id="userQuery" placeholder="e.g., all news sites (↓ for presets, Ctrl+S to save)">
+                    <button id="submit">Filter</button>
+                </div>
+                <div id="presetsDropdown"></div>
+            </div>
+            <div class="spinner" id="spinner"></div>
+            <div class="tab-count" id="tabCount"></div>
+            <div class="actions" id="actions" style="display: none;">
+                <button class="close-all-btn" id="closeAllBtn">Close Selected Tabs</button>
+            </div>
+            <div id="results"></div>
+        </div>
+        <script src="state.js"></script>
+        <script src="storage.js"></script>
+        <script src="tabs.js"></script>
+        <script src="ui.js"></script>
+        <script src="main.js"></script>
+    </body>
+</html>
