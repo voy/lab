@@ -203,6 +203,7 @@
     <span>json-explorer</span>
   </div>
   <div class="header-actions">
+    <button class="btn" id="btn-copy" disabled>Copy beautified</button>
     <button class="btn" id="btn-expand">Expand all</button>
     <button class="btn" id="btn-collapse">Collapse all</button>
   </div>
@@ -233,6 +234,9 @@
   const treeEl   = document.getElementById('tree');
   const errorBar = document.getElementById('error-bar');
   const statsEl  = document.getElementById('stats');
+  const copyBtn  = document.getElementById('btn-copy');
+
+  let lastParsed = null;
 
   // ── Parse & render ──────────────────────────────────────────────────────────
 
@@ -248,6 +252,8 @@
       treeEl.innerHTML = '<div class="tree-empty">Tree will appear here</div>';
       errorBar.classList.remove('visible');
       statsEl.textContent = '';
+      lastParsed = null;
+      copyBtn.disabled = true;
       return;
     }
     let parsed;
@@ -258,9 +264,13 @@
       errorBar.classList.add('visible');
       treeEl.innerHTML = '';
       statsEl.textContent = '';
+      lastParsed = null;
+      copyBtn.disabled = true;
       return;
     }
     errorBar.classList.remove('visible');
+    lastParsed = parsed;
+    copyBtn.disabled = false;
     treeEl.innerHTML = '';
     treeEl.appendChild(buildNode(parsed, null, true));
     updateStats(parsed);
@@ -423,6 +433,17 @@
 
   document.getElementById('btn-expand').addEventListener('click',   () => setAllCollapsed(treeEl, false));
   document.getElementById('btn-collapse').addEventListener('click', () => setAllCollapsed(treeEl, true));
+
+  // ── Copy beautified ─────────────────────────────────────────────────────────
+
+  copyBtn.addEventListener('click', () => {
+    if (!lastParsed) return;
+    navigator.clipboard.writeText(JSON.stringify(lastParsed, null, 2)).then(() => {
+      const prev = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = prev; }, 1500);
+    });
+  });
 
   // ── Stats ───────────────────────────────────────────────────────────────────
 
