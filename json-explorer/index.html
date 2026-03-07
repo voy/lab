@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSON Explorer — voy/lab</title>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --error:     #f85149;
+      --str:       #a5d6ff;
+      --num:       #ffa657;
+      --bool:      #ff7b72;
+      --null:      #8b949e;
+      --key:       #e6edf3;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .breadcrumb {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .breadcrumb a { color: var(--accent); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { padding: 0 4px; }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover { border-color: var(--accent); color: var(--text); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:disabled:hover { border-color: var(--border); color: var(--muted); }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Input pane ── */
+    .input-pane {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .pane-header {
+      padding: 8px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    textarea {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 16px;
+      min-height: 0;
+    }
+
+    textarea::placeholder { color: #3d4451; }
+
+    .error-bar {
+      display: none;
+      background: rgba(248, 81, 73, 0.1);
+      border-top: 1px solid rgba(248, 81, 73, 0.3);
+      color: var(--error);
+      font-size: 12px;
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      padding: 8px 16px;
+      flex-shrink: 0;
+    }
+
+    .error-bar.visible { display: block; }
+
+    /* ── Tree pane ── */
+    .tree-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .tree-scroll {
+      flex: 1;
+      overflow: auto;
+      padding: 12px 16px;
+      min-height: 0;
+    }
+
+    .tree-empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 4px 0;
+    }
+
+    /* ── Tree nodes ── */
+    .node { font-family: "SF Mono", "Fira Code", Consolas, monospace; font-size: 13px; line-height: 1.7; }
+
+    .node-row {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      border-radius: 4px;
+      padding: 0 4px;
+      margin: 0 -4px;
+      cursor: default;
+      white-space: nowrap;
+    }
+
+    .node-row.collapsible { cursor: pointer; }
+    .node-row.collapsible:hover { background: rgba(255,255,255,0.04); }
+
+    .toggle {
+      color: var(--muted);
+      width: 12px;
+      flex-shrink: 0;
+      user-select: none;
+      font-size: 10px;
+    }
+
+    .key   { color: var(--key); }
+    .colon { color: var(--muted); margin-right: 2px; }
+
+    .v-str  { color: var(--str); }
+    .v-num  { color: var(--num); }
+    .v-bool { color: var(--bool); }
+    .v-null { color: var(--null); }
+
+    .bracket { color: var(--muted); }
+    .summary { color: var(--muted); font-size: 11px; margin-left: 4px; }
+
+    .children {
+      padding-left: 20px;
+      border-left: 1px solid #21262d;
+      margin-left: 5px;
+    }
+
+    .comma { color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="breadcrumb">
+    <a href="../">voy/lab</a>
+    <span class="sep">/</span>
+    <span>json-explorer</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn" id="btn-expand">Expand all</button>
+    <button class="btn" id="btn-collapse">Collapse all</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="input-pane">
+    <div class="pane-header">
+      <span>Input</span>
+    </div>
+    <textarea id="input" placeholder="Paste JSON here…" spellcheck="false"></textarea>
+    <div class="error-bar" id="error-bar"></div>
+  </div>
+
+  <div class="tree-pane">
+    <div class="pane-header">
+      <span>Explorer</span>
+      <span id="stats" style="font-weight:400; text-transform:none; letter-spacing:0; font-size:11px;"></span>
+    </div>
+    <div class="tree-scroll" id="tree">
+      <div class="tree-empty">Tree will appear here</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const inputEl  = document.getElementById('input');
+  const treeEl   = document.getElementById('tree');
+  const errorBar = document.getElementById('error-bar');
+  const statsEl  = document.getElementById('stats');
+
+  // ── Parse & render ──────────────────────────────────────────────────────────
+
+  let debounceTimer;
+  inputEl.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(update, 120);
+  });
+
+  function update() {
+    const raw = inputEl.value.trim();
+    if (!raw) {
+      treeEl.innerHTML = '<div class="tree-empty">Tree will appear here</div>';
+      errorBar.classList.remove('visible');
+      statsEl.textContent = '';
+      return;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      errorBar.textContent = e.message;
+      errorBar.classList.add('visible');
+      treeEl.innerHTML = '';
+      statsEl.textContent = '';
+      return;
+    }
+    errorBar.classList.remove('visible');
+    treeEl.innerHTML = '';
+    treeEl.appendChild(buildNode(parsed, null, true));
+    updateStats(parsed);
+  }
+
+  function buildNode(value, key, isLast) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'node';
+
+    if (value !== null && typeof value === 'object') {
+      const isArr    = Array.isArray(value);
+      const entries  = isArr ? value : Object.entries(value);
+      const count    = isArr ? value.length : entries.length;
+      const openB    = isArr ? '[' : '{';
+      const closeB   = isArr ? ']' : '}';
+
+      const row = document.createElement('div');
+      row.className = 'node-row collapsible';
+
+      const toggle = document.createElement('span');
+      toggle.className = 'toggle';
+      toggle.textContent = '▾';
+
+      row.appendChild(toggle);
+
+      if (key !== null) {
+        const k = document.createElement('span');
+        k.className = 'key';
+        k.textContent = JSON.stringify(key);
+        const colon = document.createElement('span');
+        colon.className = 'colon';
+        colon.textContent = ': ';
+        row.appendChild(k);
+        row.appendChild(colon);
+      }
+
+      const open = document.createElement('span');
+      open.className = 'bracket';
+      open.textContent = openB;
+      row.appendChild(open);
+
+      const summary = document.createElement('span');
+      summary.className = 'summary';
+      summary.textContent = isArr ? `${count} item${count !== 1 ? 's' : ''}` : `${count} key${count !== 1 ? 's' : ''}`;
+      row.appendChild(summary);
+
+      const children = document.createElement('div');
+      children.className = 'children';
+
+      const items = isArr ? value : entries;
+      items.forEach((item, i) => {
+        const childKey   = isArr ? null : item[0];
+        const childVal   = isArr ? item  : item[1];
+        const childLast  = i === items.length - 1;
+        children.appendChild(buildNode(childVal, childKey, childLast));
+      });
+
+      const closeRow = document.createElement('div');
+      closeRow.className = 'node-row';
+      const pad = document.createElement('span');
+      pad.className = 'toggle';
+      closeRow.appendChild(pad);
+      const close = document.createElement('span');
+      close.className = 'bracket';
+      close.textContent = closeB;
+      closeRow.appendChild(close);
+      if (!isLast) {
+        const comma = document.createElement('span');
+        comma.className = 'comma';
+        comma.textContent = ',';
+        closeRow.appendChild(comma);
+      }
+
+      let collapsed = false;
+      row.addEventListener('click', () => {
+        collapsed = !collapsed;
+        toggle.textContent = collapsed ? '▸' : '▾';
+        summary.style.display = collapsed ? 'inline' : 'none';
+        children.style.display = collapsed ? 'none' : '';
+        closeRow.style.display = collapsed ? 'none' : '';
+      });
+
+      // Initially hide summary
+      summary.style.display = 'none';
+
+      wrapper.appendChild(row);
+      wrapper.appendChild(children);
+      wrapper.appendChild(closeRow);
+    } else {
+      const row = document.createElement('div');
+      row.className = 'node-row';
+
+      const pad = document.createElement('span');
+      pad.className = 'toggle';
+      row.appendChild(pad);
+
+      if (key !== null) {
+        const k = document.createElement('span');
+        k.className = 'key';
+        k.textContent = JSON.stringify(key);
+        const colon = document.createElement('span');
+        colon.className = 'colon';
+        colon.textContent = ': ';
+        row.appendChild(k);
+        row.appendChild(colon);
+      }
+
+      const val = document.createElement('span');
+      if (value === null) {
+        val.className = 'v-null';
+        val.textContent = 'null';
+      } else if (typeof value === 'string') {
+        val.className = 'v-str';
+        val.textContent = JSON.stringify(value);
+      } else if (typeof value === 'number') {
+        val.className = 'v-num';
+        val.textContent = value;
+      } else if (typeof value === 'boolean') {
+        val.className = 'v-bool';
+        val.textContent = value;
+      }
+      row.appendChild(val);
+
+      if (!isLast) {
+        const comma = document.createElement('span');
+        comma.className = 'comma';
+        comma.textContent = ',';
+        row.appendChild(comma);
+      }
+
+      wrapper.appendChild(row);
+    }
+
+    return wrapper;
+  }
+
+  // ── Expand / Collapse all ───────────────────────────────────────────────────
+
+  function setAllCollapsed(root, collapse) {
+    root.querySelectorAll('.node-row.collapsible').forEach(row => {
+      const node     = row.parentElement;
+      const toggle   = row.querySelector('.toggle');
+      const summary  = row.querySelector('.summary');
+      const children = node.querySelector(':scope > .children');
+      const closeRow = node.querySelector(':scope > .node-row:last-child');
+      if (!children) return;
+      if (collapse) {
+        toggle.textContent = '▸';
+        summary.style.display = 'inline';
+        children.style.display = 'none';
+        if (closeRow) closeRow.style.display = 'none';
+      } else {
+        toggle.textContent = '▾';
+        summary.style.display = 'none';
+        children.style.display = '';
+        if (closeRow) closeRow.style.display = '';
+      }
+    });
+  }
+
+  document.getElementById('btn-expand').addEventListener('click',   () => setAllCollapsed(treeEl, false));
+  document.getElementById('btn-collapse').addEventListener('click', () => setAllCollapsed(treeEl, true));
+
+  // ── Stats ───────────────────────────────────────────────────────────────────
+
+  function updateStats(val) {
+    const bytes = new TextEncoder().encode(JSON.stringify(val)).length;
+    const kb = (bytes / 1024).toFixed(1);
+    const keys = countKeys(val);
+    statsEl.textContent = `${keys} node${keys !== 1 ? 's' : ''} · ${kb} KB`;
+  }
+
+  function countKeys(val) {
+    if (val === null || typeof val !== 'object') return 1;
+    const children = Array.isArray(val) ? val : Object.values(val);
+    return children.reduce((sum, v) => sum + countKeys(v), children.length);
+  }
+</script>
+</body>
+</html>
