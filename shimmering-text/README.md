@@ -1,4 +1,4 @@
-# sparkling-text
+# shimmering-text
 
 A terminal animation that renders a paragraph of text with a shimmer — a bright band of light that sweeps left to right across every line simultaneously, like the loading indicator in the Claude CLI.
 
