@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>voy/lab</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-dim: #1f6feb;
+      --tag-bg: #21262d;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px;
+    }
+
+    .repo-title {
+      font-size: 20px;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .repo-title a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .repo-title a:hover { text-decoration: underline; }
+    .repo-title .sep { color: var(--muted); padding: 0 4px; }
+
+    .repo-desc {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    main {
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 24px;
+      flex: 1;
+    }
+
+    h2 {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+    }
+
+    .section { margin-bottom: 40px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px 20px;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color 0.15s;
+    }
+
+    .card:hover { border-color: var(--accent-dim); }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .tag {
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 1px 8px;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="repo-title">
+    <a href="https://github.com/voy">voy</a>
+    <span class="sep">/</span>
+    <a href="https://github.com/voy/lab"><strong>lab</strong></a>
+  </div>
+  <p class="repo-desc">A lab for tools, experiments, and interactive demos</p>
+</header>
+
+<main>
+
+  <div class="section">
+    <h2>Image</h2>
+    <div class="grid">
+      <a class="card" href="./red-tint/">
+        <div class="card-title">Red Tint</div>
+        <div class="card-desc">Apply a red tint to a selected region of an image and download the result.</div>
+        <div class="card-tags">
+          <span class="tag">browser</span>
+          <span class="tag">canvas</span>
+        </div>
+      </a>
+      <a class="card" href="./boxcrop/">
+        <div class="card-title">boxcrop</div>
+        <div class="card-desc">Crop images to a specific output resolution. Drag to position, drag corners to resize.</div>
+        <div class="card-tags">
+          <span class="tag">browser</span>
+          <span class="tag">canvas</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Terminal</h2>
+    <div class="grid">
+      <a class="card" href="./shimmering-text/">
+        <div class="card-title">shimmering-text</div>
+        <div class="card-desc">A terminal animation that sweeps a shimmer of light across a paragraph of text. Includes a detailed walkthrough of how it works.</div>
+        <div class="card-tags">
+          <span class="tag">node</span>
+          <span class="tag">terminal</span>
+          <span class="tag">animation</span>
+        </div>
+      </a>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <a href="https://github.com/voy/lab">github.com/voy/lab</a>
+</footer>
+
+</body>
+</html>

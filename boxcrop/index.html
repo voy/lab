@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Cropper</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111118;
+      color: #ddd;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 20px;
+    }
+
+    #drop-zone {
+      width: 560px;
+      height: 280px;
+      border: 2px dashed #444;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: default;
+      transition: border-color 0.15s, background 0.15s;
+      user-select: none;
+    }
+    #drop-zone.dragover {
+      border-color: #6c74f5;
+      background: rgba(108, 116, 245, 0.08);
+    }
+    #drop-zone .icon { font-size: 42px; opacity: 0.4; }
+    #drop-zone p { font-size: 15px; color: #777; }
+    #drop-zone small { font-size: 12px; color: #555; }
+
+    #canvas-wrap {
+      display: none;
+      position: relative;
+    }
+    #canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    #controls {
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    #controls.visible { display: flex; }
+
+    button {
+      border: none;
+      padding: 9px 22px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #crop-btn {
+      background: #6c74f5;
+      color: #fff;
+    }
+    #crop-btn:hover { background: #535bdb; }
+    #reset-btn {
+      background: #2a2a35;
+      color: #aaa;
+    }
+    #reset-btn:hover { background: #383845; }
+
+    #info {
+      font-size: 12px;
+      color: #666;
+    }
+
+    #res-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #888;
+    }
+    #res-row input {
+      width: 72px;
+      background: #1e1e2a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #ddd;
+      font-size: 13px;
+      padding: 5px 8px;
+      text-align: center;
+    }
+    #res-row input:focus {
+      outline: none;
+      border-color: #6c74f5;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="res-row">
+    <span>Output</span>
+    <input id="out-w" type="number" value="1280" min="1" max="99999">
+    <span>×</span>
+    <input id="out-h" type="number" value="800" min="1" max="99999">
+    <span>px</span>
+  </div>
+
+  <div id="drop-zone">
+    <div class="icon">&#128247;</div>
+    <p>Drop an image here</p>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="controls">
+    <button id="crop-btn">Crop &amp; Download</button>
+    <button id="reset-btn">Reset</button>
+    <span id="info"></span>
+  </div>
+
+  <script>
+    const dropZone   = document.getElementById('drop-zone');
+    const canvasWrap = document.getElementById('canvas-wrap');
+    const canvas     = document.getElementById('canvas');
+    const ctx        = canvas.getContext('2d');
+    const controls   = document.getElementById('controls');
+    const cropBtn    = document.getElementById('crop-btn');
+    const resetBtn   = document.getElementById('reset-btn');
+    const infoEl     = document.getElementById('info');
+    const outWInput  = document.getElementById('out-w');
+    const outHInput  = document.getElementById('out-h');
+
+    const HS  = 10;  // handle square size (visual)
+    const HIT = 14;  // handle hit radius
+
+    function OUT_W() { return parseInt(outWInput.value, 10) || 1280; }
+    function OUT_H() { return parseInt(outHInput.value, 10) || 800; }
+    function RATIO() { return OUT_W() / OUT_H(); }
+
+    let img = null, scale = 1;
+    let cropX = 0, cropY = 0, cropW = 0, cropH = 0;
+    let isDragging = false, isResizing = false;
+    let resizeHandle = null, dragStart = null;
+
+    // ── Drag & Drop ──────────────────────────────────────────────────────────
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) loadImage(file);
+    });
+
+    // ── Load image ───────────────────────────────────────────────────────────
+    function loadImage(file) {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => { img = image; URL.revokeObjectURL(url); setup(); };
+      image.src = url;
+    }
+
+    function setup() {
+      const maxW = Math.min(1300, window.innerWidth  - 40);
+      const maxH = Math.min(680,  window.innerHeight - 160);
+      scale = Math.min(maxW / img.width, maxH / img.height, 4);
+
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      // Initial crop rect: map OUT_W×OUT_H if it fits, otherwise 80% of canvas
+      const naturalW = OUT_W() * scale;
+      const naturalH = OUT_H() * scale;
+      if (naturalW <= canvas.width && naturalH <= canvas.height) {
+        cropW = naturalW; cropH = naturalH;
+      } else {
+        const s = Math.min((canvas.width * 0.8) / OUT_W(), (canvas.height * 0.8) / OUT_H());
+        cropW = OUT_W() * s; cropH = OUT_H() * s;
+      }
+      cropX = Math.max(0, (canvas.width  - cropW) / 2);
+      cropY = Math.max(0, (canvas.height - cropH) / 2);
+
+      dropZone.style.display = 'none';
+      canvasWrap.style.display = 'block';
+      controls.classList.add('visible');
+      updateInfo();
+      render();
+    }
+
+    function updateInfo() {
+      if (!img) return;
+      const srcW = Math.round(cropW / scale);
+      const srcH = Math.round(cropH / scale);
+      infoEl.textContent = (srcW >= OUT_W() && srcH >= OUT_H())
+        ? `${img.width}×${img.height} px — drag to move · drag corners to resize`
+        : `Capturing ${srcW}×${srcH} px → upscaled to ${OUT_W()}×${OUT_H()}`;
+    }
+
+    // ── Handle hit-testing ────────────────────────────────────────────────────
+    function handleAt(mx, my) {
+      const pts = {
+        tl: [cropX,            cropY],
+        tr: [cropX + cropW,    cropY],
+        bl: [cropX,            cropY + cropH],
+        br: [cropX + cropW,    cropY + cropH],
+      };
+      for (const [name, [x, y]] of Object.entries(pts)) {
+        if (Math.abs(mx - x) <= HIT && Math.abs(my - y) <= HIT) return name;
+      }
+      return null;
+    }
+
+    function insideBox(mx, my) {
+      return mx >= cropX && mx <= cropX + cropW && my >= cropY && my <= cropY + cropH;
+    }
+
+    // ── Mouse events ──────────────────────────────────────────────────────────
+    canvas.addEventListener('mousedown', e => {
+      if (!img) return;
+      const { mx, my } = canvasMouse(e);
+      const h = handleAt(mx, my);
+      if (h) {
+        isResizing = true;
+        resizeHandle = h;
+        dragStart = { mx, my, cropX, cropY, cropW, cropH };
+        e.preventDefault();
+      } else if (insideBox(mx, my)) {
+        isDragging = true;
+        dragStart = { mx, my, cropX, cropY };
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!img) return;
+      const { mx, my } = canvasMouse(e);
+
+      if (isDragging) {
+        cropX = clamp(dragStart.cropX + mx - dragStart.mx, 0, canvas.width  - cropW);
+        cropY = clamp(dragStart.cropY + my - dragStart.my, 0, canvas.height - cropH);
+        render();
+        return;
+      }
+
+      if (isResizing) {
+        const dx = mx - dragStart.mx;
+        let newW, newH, newX, newY;
+
+        // Drive size off the horizontal delta; maintain output aspect ratio
+        switch (resizeHandle) {
+          case 'br': newW = dragStart.cropW + dx;  newX = dragStart.cropX; newY = dragStart.cropY; break;
+          case 'bl': newW = dragStart.cropW - dx;  newX = dragStart.cropX + dragStart.cropW - newW; newY = dragStart.cropY; break;
+          case 'tr': newW = dragStart.cropW + dx;  newX = dragStart.cropX; newY = dragStart.cropY + dragStart.cropH - newW / RATIO(); break;
+          case 'tl': newW = dragStart.cropW - dx;  newX = dragStart.cropX + dragStart.cropW - newW; newY = dragStart.cropY + dragStart.cropH - newW / RATIO(); break;
+        }
+        newW = Math.max(80, Math.min(canvas.width,  newW));
+        newH = newW / RATIO();
+        newX = clamp(newX, 0, canvas.width  - newW);
+        newY = clamp(newY, 0, canvas.height - newH);
+
+        cropX = newX; cropY = newY; cropW = newW; cropH = newH;
+        updateInfo();
+        render();
+        return;
+      }
+
+      // Cursor feedback
+      const h = handleAt(mx, my);
+      if      (h === 'tl' || h === 'br') canvas.style.cursor = 'nwse-resize';
+      else if (h === 'tr' || h === 'bl') canvas.style.cursor = 'nesw-resize';
+      else if (insideBox(mx, my))        canvas.style.cursor = 'move';
+      else                               canvas.style.cursor = 'default';
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = isResizing = false;
+      resizeHandle = dragStart = null;
+    });
+
+    function canvasMouse(e) {
+      const r = canvas.getBoundingClientRect();
+      return { mx: e.clientX - r.left, my: e.clientY - r.top };
+    }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // Dim outside
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0,            0,             canvas.width, cropY);
+      ctx.fillRect(0,            cropY + cropH, canvas.width, canvas.height - cropY - cropH);
+      ctx.fillRect(0,            cropY,         cropX,        cropH);
+      ctx.fillRect(cropX + cropW,cropY,         canvas.width - cropX - cropW, cropH);
+
+      // Border
+      ctx.strokeStyle = '#6c74f5';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(cropX + 0.5, cropY + 0.5, cropW - 1, cropH - 1);
+
+      // Rule-of-thirds
+      ctx.strokeStyle = 'rgba(108,116,245,0.25)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 3; i++) {
+        const x = cropX + (cropW / 3) * i, y = cropY + (cropH / 3) * i;
+        ctx.beginPath(); ctx.moveTo(x, cropY);  ctx.lineTo(x, cropY + cropH); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cropX, y);  ctx.lineTo(cropX + cropW, y); ctx.stroke();
+      }
+
+      // Corner handles (drawn at corners, centred on the corner point)
+      ctx.fillStyle = '#6c74f5';
+      [
+        [cropX,         cropY],
+        [cropX + cropW, cropY],
+        [cropX,         cropY + cropH],
+        [cropX + cropW, cropY + cropH],
+      ].forEach(([x, y]) => ctx.fillRect(x - HS / 2, y - HS / 2, HS, HS));
+
+      // Label
+      const srcW = Math.round(cropW / scale);
+      const srcH = Math.round(cropH / scale);
+      const label = (srcW >= OUT_W() && srcH >= OUT_H())
+        ? `${OUT_W()}×${OUT_H()}`
+        : `${srcW}×${srcH} → ${OUT_W()}×${OUT_H()}`;
+      ctx.font = 'bold 11px system-ui';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = '#6c74f5';
+      ctx.fillRect(cropX, cropY - 20, tw + 10, 18);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, cropX + 5, cropY - 6);
+    }
+
+    // ── Crop & download ───────────────────────────────────────────────────────
+    function doCrop() {
+      if (!img) return;
+      const w = OUT_W(), h = OUT_H();
+      const out = document.createElement('canvas');
+      out.width = w; out.height = h;
+      const octx = out.getContext('2d');
+      octx.drawImage(img, cropX / scale, cropY / scale, cropW / scale, cropH / scale, 0, 0, w, h);
+      out.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `cropped-${w}x${h}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }, 'image/png');
+    }
+
+    cropBtn.addEventListener('click', doCrop);
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && document.activeElement !== outWInput && document.activeElement !== outHInput) {
+        doCrop();
+      }
+    });
+
+    // ── Resolution change ─────────────────────────────────────────────────────
+    function onResolutionChange() {
+      if (!img) return;
+      // Keep crop centre, adjust height to match new ratio
+      const cx = cropX + cropW / 2;
+      const cy = cropY + cropH / 2;
+      cropH = cropW / RATIO();
+      cropX = clamp(cx - cropW / 2, 0, canvas.width  - cropW);
+      cropY = clamp(cy - cropH / 2, 0, canvas.height - cropH);
+      updateInfo();
+      render();
+    }
+
+    outWInput.addEventListener('change', onResolutionChange);
+    outHInput.addEventListener('change', onResolutionChange);
+
+    // ── Reset ─────────────────────────────────────────────────────────────────
+    resetBtn.addEventListener('click', () => {
+      img = null;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvasWrap.style.display = 'none';
+      controls.classList.remove('visible');
+      dropZone.style.display = 'flex';
+      infoEl.textContent = '';
+    });
+  </script>
+</body>
+</html>

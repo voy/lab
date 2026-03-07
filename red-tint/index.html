@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Redifier</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #111118;
+      color: #ddd;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 20px;
+    }
+
+    #drop-zone {
+      width: 560px;
+      height: 280px;
+      border: 2px dashed #444;
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: default;
+      transition: border-color 0.15s, background 0.15s;
+      user-select: none;
+    }
+    #drop-zone.dragover {
+      border-color: #e05050;
+      background: rgba(224, 80, 80, 0.08);
+    }
+    #drop-zone .icon { font-size: 42px; opacity: 0.4; }
+    #drop-zone p { font-size: 15px; color: #777; }
+    #drop-zone small { font-size: 12px; color: #555; }
+
+    #canvas-wrap {
+      display: none;
+      position: relative;
+    }
+    #canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    #controls {
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    #controls.visible { display: flex; }
+
+    button {
+      border: none;
+      padding: 9px 22px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    #apply-btn {
+      background: #e05050;
+      color: #fff;
+    }
+    #apply-btn:hover { background: #c03838; }
+    #reset-btn {
+      background: #2a2a35;
+      color: #aaa;
+    }
+    #reset-btn:hover { background: #383845; }
+
+    #info {
+      font-size: 12px;
+      color: #666;
+    }
+
+    #tint-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: #888;
+    }
+    #tint-row label { display: flex; align-items: center; gap: 6px; }
+    #tint-opacity {
+      width: 120px;
+      accent-color: #e05050;
+      cursor: pointer;
+    }
+    #opacity-val {
+      min-width: 30px;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="tint-row">
+    <label>
+      Tint intensity
+      <input id="tint-opacity" type="range" min="5" max="80" value="40">
+    </label>
+    <span id="opacity-val">40%</span>
+  </div>
+
+  <div id="drop-zone">
+    <div class="icon">&#128247;</div>
+    <p>Drop an image here</p>
+    <small>select a region to apply a red tint</small>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="controls">
+    <button id="apply-btn">Apply Tint &amp; Download</button>
+    <button id="reset-btn">Reset</button>
+    <span id="info"></span>
+  </div>
+
+  <script>
+    const dropZone   = document.getElementById('drop-zone');
+    const canvasWrap = document.getElementById('canvas-wrap');
+    const canvas     = document.getElementById('canvas');
+    const ctx        = canvas.getContext('2d');
+    const controls   = document.getElementById('controls');
+    const applyBtn   = document.getElementById('apply-btn');
+    const resetBtn   = document.getElementById('reset-btn');
+    const infoEl     = document.getElementById('info');
+    const tintInput  = document.getElementById('tint-opacity');
+    const opacityVal = document.getElementById('opacity-val');
+
+    const HS  = 10;
+    const HIT = 14;
+
+    let img = null, scale = 1;
+    let selX = 0, selY = 0, selW = 0, selH = 0;
+    let isDragging = false, isResizing = false;
+    let resizeHandle = null, dragStart = null;
+
+    // ── Tint opacity ──────────────────────────────────────────────────────────
+    tintInput.addEventListener('input', () => {
+      opacityVal.textContent = tintInput.value + '%';
+      if (img) render();
+    });
+
+    // ── Drag & Drop ──────────────────────────────────────────────────────────
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) loadImage(file);
+    });
+
+    // ── Load image ────────────────────────────────────────────────────────────
+    function loadImage(file) {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => { img = image; URL.revokeObjectURL(url); setup(); };
+      image.src = url;
+    }
+
+    function setup() {
+      const maxW = Math.min(1300, window.innerWidth  - 40);
+      const maxH = Math.min(680,  window.innerHeight - 160);
+      scale = Math.min(maxW / img.width, maxH / img.height, 4);
+
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      // Initial selection: centred 40% of canvas
+      selW = canvas.width  * 0.4;
+      selH = canvas.height * 0.4;
+      selX = (canvas.width  - selW) / 2;
+      selY = (canvas.height - selH) / 2;
+
+      dropZone.style.display = 'none';
+      canvasWrap.style.display = 'block';
+      controls.classList.add('visible');
+      updateInfo();
+      render();
+    }
+
+    function updateInfo() {
+      if (!img) return;
+      const w = Math.round(selW / scale);
+      const h = Math.round(selH / scale);
+      infoEl.textContent = `${w}×${h} px — drag to move · drag corners to resize`;
+    }
+
+    // ── Handle hit-testing ────────────────────────────────────────────────────
+    function handleAt(mx, my) {
+      const pts = {
+        tl: [selX,         selY],
+        tr: [selX + selW,  selY],
+        bl: [selX,         selY + selH],
+        br: [selX + selW,  selY + selH],
+      };
+      for (const [name, [x, y]] of Object.entries(pts)) {
+        if (Math.abs(mx - x) <= HIT && Math.abs(my - y) <= HIT) return name;
+      }
+      return null;
+    }
+
+    function insideBox(mx, my) {
+      return mx >= selX && mx <= selX + selW && my >= selY && my <= selY + selH;
+    }
+
+    // ── Mouse events ──────────────────────────────────────────────────────────
+    canvas.addEventListener('mousedown', e => {
+      if (!img) return;
+      const { mx, my } = canvasMouse(e);
+      const h = handleAt(mx, my);
+      if (h) {
+        isResizing = true;
+        resizeHandle = h;
+        dragStart = { mx, my, selX, selY, selW, selH };
+        e.preventDefault();
+      } else if (insideBox(mx, my)) {
+        isDragging = true;
+        dragStart = { mx, my, selX, selY };
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      if (!img) return;
+      const { mx, my } = canvasMouse(e);
+
+      if (isDragging) {
+        selX = clamp(dragStart.selX + mx - dragStart.mx, 0, canvas.width  - selW);
+        selY = clamp(dragStart.selY + my - dragStart.my, 0, canvas.height - selH);
+        render();
+        return;
+      }
+
+      if (isResizing) {
+        const dx = mx - dragStart.mx;
+        const dy = my - dragStart.my;
+        let newW = selW, newH = selH, newX = selX, newY = selY;
+
+        switch (resizeHandle) {
+          case 'br': newW = dragStart.selW + dx; newH = dragStart.selH + dy; newX = dragStart.selX; newY = dragStart.selY; break;
+          case 'bl': newW = dragStart.selW - dx; newH = dragStart.selH + dy; newX = dragStart.selX + dragStart.selW - newW; newY = dragStart.selY; break;
+          case 'tr': newW = dragStart.selW + dx; newH = dragStart.selH - dy; newX = dragStart.selX; newY = dragStart.selY + dragStart.selH - newH; break;
+          case 'tl': newW = dragStart.selW - dx; newH = dragStart.selH - dy; newX = dragStart.selX + dragStart.selW - newW; newY = dragStart.selY + dragStart.selH - newH; break;
+        }
+
+        newW = Math.max(20, Math.min(canvas.width,  newW));
+        newH = Math.max(20, Math.min(canvas.height, newH));
+        newX = clamp(newX, 0, canvas.width  - newW);
+        newY = clamp(newY, 0, canvas.height - newH);
+
+        selX = newX; selY = newY; selW = newW; selH = newH;
+        updateInfo();
+        render();
+        return;
+      }
+
+      // Cursor feedback
+      const h = handleAt(mx, my);
+      if      (h === 'tl' || h === 'br') canvas.style.cursor = 'nwse-resize';
+      else if (h === 'tr' || h === 'bl') canvas.style.cursor = 'nesw-resize';
+      else if (insideBox(mx, my))        canvas.style.cursor = 'move';
+      else                               canvas.style.cursor = 'default';
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = isResizing = false;
+      resizeHandle = dragStart = null;
+    });
+
+    function canvasMouse(e) {
+      const r = canvas.getBoundingClientRect();
+      return { mx: e.clientX - r.left, my: e.clientY - r.top };
+    }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // Red tint preview over selection
+      const alpha = parseInt(tintInput.value, 10) / 100;
+      ctx.fillStyle = `rgba(220, 40, 40, ${alpha})`;
+      ctx.fillRect(selX, selY, selW, selH);
+
+      // Dim outside
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0,          0,          canvas.width, selY);
+      ctx.fillRect(0,          selY + selH, canvas.width, canvas.height - selY - selH);
+      ctx.fillRect(0,          selY,        selX,         selH);
+      ctx.fillRect(selX + selW, selY,        canvas.width - selX - selW, selH);
+
+      // Border
+      ctx.strokeStyle = '#e05050';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(selX + 0.5, selY + 0.5, selW - 1, selH - 1);
+
+      // Corner handles
+      ctx.fillStyle = '#e05050';
+      [
+        [selX,         selY],
+        [selX + selW,  selY],
+        [selX,         selY + selH],
+        [selX + selW,  selY + selH],
+      ].forEach(([x, y]) => ctx.fillRect(x - HS / 2, y - HS / 2, HS, HS));
+
+      // Label
+      const w = Math.round(selW / scale);
+      const h = Math.round(selH / scale);
+      const label = `${w}×${h} px`;
+      ctx.font = 'bold 11px system-ui';
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = '#e05050';
+      ctx.fillRect(selX, selY - 20, tw + 10, 18);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, selX + 5, selY - 6);
+    }
+
+    // ── Apply tint & download ─────────────────────────────────────────────────
+    function doApply() {
+      if (!img) return;
+
+      const out = document.createElement('canvas');
+      out.width  = img.width;
+      out.height = img.height;
+      const octx = out.getContext('2d');
+
+      // Draw original image
+      octx.drawImage(img, 0, 0);
+
+      // Apply red tint to selected region at full resolution
+      const alpha = parseInt(tintInput.value, 10) / 100;
+      const srcX = Math.round(selX / scale);
+      const srcY = Math.round(selY / scale);
+      const srcW = Math.round(selW / scale);
+      const srcH = Math.round(selH / scale);
+
+      octx.fillStyle = `rgba(220, 40, 40, ${alpha})`;
+      octx.fillRect(srcX, srcY, srcW, srcH);
+
+      out.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `redified.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }, 'image/png');
+    }
+
+    applyBtn.addEventListener('click', doApply);
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doApply();
+    });
+
+    // ── Reset ─────────────────────────────────────────────────────────────────
+    resetBtn.addEventListener('click', () => {
+      img = null;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvasWrap.style.display = 'none';
+      controls.classList.remove('visible');
+      dropZone.style.display = 'flex';
+      infoEl.textContent = '';
+    });
+  </script>
+</body>
+</html>

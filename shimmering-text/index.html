@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>shimmering-text — voy/lab</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --code-bg: #161b22;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.7;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    header a { color: var(--accent); text-decoration: none; }
+    header a:hover { text-decoration: underline; }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      margin-bottom: 32px;
+    }
+
+    .usage {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 40px;
+      font-size: 14px;
+    }
+
+    .usage strong { color: var(--text); }
+    .usage code {
+      background: #21262d;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 13px;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 36px 0;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    p {
+      color: #c9d1d9;
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+
+    pre code {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #e6edf3;
+    }
+
+    .file-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+      background: var(--surface);
+      margin-top: 8px;
+    }
+
+    .file-link:hover { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="../">voy/lab</a> / shimmering-text
+</header>
+
+<div class="container">
+
+  <h1>shimmering-text</h1>
+  <p class="subtitle">
+    A terminal animation that renders a paragraph of text with a shimmer —
+    a bright band of light that sweeps left to right across every line simultaneously,
+    like the loading indicator in the Claude CLI.
+  </p>
+
+  <div class="usage">
+    <strong>Usage</strong><br><br>
+    <code>node shimmer.js</code>
+    &nbsp; Press <code>Ctrl+C</code> to exit.
+    <br><br>
+    <a class="file-link" href="shimmer.js">shimmer.js</a>
+  </div>
+
+  <hr>
+
+  <h2>How it works</h2>
+
+  <p>
+    The paragraph is stored as a single string and word-wrapped in software to a fixed column
+    width of 60 characters. Words are never broken mid-word.
+  </p>
+
+  <pre><code>function wrap(text, width) {
+  const words = text.split(' ');
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? line + ' ' + word : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}</code></pre>
+
+  <hr>
+
+  <h2>The color model</h2>
+
+  <p>
+    Each character has two possible colors: a dim base color and a bright peak color, both defined as RGB.
+    The actual color of any given character is a blend between these two, determined by how close that
+    character is to the shimmer's current position.
+  </p>
+
+  <pre><code>const BASE = { r: 80,  g: 80,  b: 120 }; // muted indigo
+const PEAK = { r: 230, g: 235, b: 255 }; // near-white</code></pre>
+
+  <hr>
+
+  <h2>Computing one character's color</h2>
+
+  <pre><code>function colorAt(ci, shimmerPos) {
+  const dist = Math.abs(ci - shimmerPos);
+  const t = smoothstep(Math.max(0, 1 - dist / SHIMMER_WIDTH));
+  const r = lerp(BASE.r, PEAK.r, t);
+  const g = lerp(BASE.g, PEAK.g, t);
+  const b = lerp(BASE.b, PEAK.b, t);
+  return `\x1b[38;2;${r};${g};${b}m`;
+}</code></pre>
+
+  <p>
+    <strong>Distance</strong> — how far the character's column is from the shimmer center.<br>
+    <strong>Normalize &amp; flip</strong> — maps distance to 0–1 and flips it so the center scores 1 (brightest).<br>
+    <strong>Smoothstep</strong> — passes the value through <code>t²(3 - 2t)</code>, an S-curve that makes the glow rise and fall softly instead of linearly.<br>
+    <strong>Blend</strong> — interpolates each RGB channel between BASE and PEAK using the smoothed value.<br>
+    <strong>Emit</strong> — packs the result into an ANSI truecolor escape sequence.
+  </p>
+
+  <hr>
+
+  <h2>Rendering in-place</h2>
+
+  <p>
+    On the first frame, lines are written normally with no trailing newline, leaving the cursor at
+    the end of the last line. On every subsequent frame, two escape sequences reposition it:
+    <code>\x1b[NA</code> moves the cursor up N−1 rows, then <code>\r</code> resets it to column 0.
+    The entire block is then overwritten character by character. All output for a frame is assembled
+    into a single string before writing to avoid partial-frame flicker.
+  </p>
+
+  <hr>
+
+  <h2>The animation loop</h2>
+
+  <pre><code>setInterval(() => {
+  if (pausing) {
+    if (++pauseFrames >= PAUSE_FRAMES) {
+      pausing = false; pauseFrames = 0; pos = -SHIMMER_WIDTH;
+    }
+    return;
+  }
+  render(pos);
+  pos += 0.4;
+  if (pos > WRAP_WIDTH + SHIMMER_WIDTH) pausing = true;
+}, 16);</code></pre>
+
+  <p>
+    16 ms intervals give ~60 fps. Each tick advances the shimmer 0.4 columns. When the sweep exits
+    the right edge, a 45-frame (~750 ms) pause runs before the position resets. This rhythm —
+    sweep, pause, sweep — makes it feel like a living indicator rather than a mechanical loop.
+  </p>
+
+  <hr>
+
+  <p>
+    Full annotated walkthrough: <a href="WALKTHROUGH.md" style="color: var(--accent);">WALKTHROUGH.md</a>
+  </p>
+
+</div>
+
+</body>
+</html>
