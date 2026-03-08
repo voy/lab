@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Epilepsy Lock Screen Generator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      min-height: 100vh;
+      gap: 1.5rem;
+    }
+    h1 { font-size: 1rem; opacity: 0.5; letter-spacing: 0.1em; text-transform: uppercase; }
+    form {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.5rem 1rem;
+      align-items: center;
+      width: 100%;
+      max-width: 400px;
+    }
+    label { font-size: 0.75rem; opacity: 0.5; letter-spacing: 0.08em; text-transform: uppercase; }
+    input {
+      background: #222;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      width: 100%;
+    }
+    input:focus { outline: none; border-color: #666; }
+    canvas {
+      border: 1px solid #333;
+      border-radius: 8px;
+      max-height: 70vh;
+      width: auto;
+    }
+    button {
+      background: #fff;
+      color: #000;
+      border: none;
+      padding: 0.75rem 2rem;
+      font-size: 1rem;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+    }
+    button:hover { background: #ddd; }
+    .instructions {
+      width: 100%;
+      max-width: 400px;
+      font-size: 0.8rem;
+      line-height: 1.7;
+      color: #666;
+    }
+    .instructions ol {
+      padding-left: 1.2em;
+    }
+    .instructions li { margin-bottom: 0.2rem; }
+    .instructions strong { color: #888; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Epilepsy Lock Screen</h1>
+
+  <form id="config">
+    <label for="med">Medication</label>
+    <input id="med" type="text" value="MY MEDICATION" spellcheck="false">
+    <label for="morning">Morning dose</label>
+    <input id="morning" type="text" value="000 mg" spellcheck="false">
+    <label for="evening">Evening dose</label>
+    <input id="evening" type="text" value="000 mg" spellcheck="false">
+  </form>
+
+  <canvas id="c"></canvas>
+  <button id="dl">Download PNG</button>
+
+  <div class="instructions">
+    <ol>
+      <li>Fill in your medication details above</li>
+      <li>Download the PNG</li>
+      <li>On iPhone: <strong>Settings → Wallpaper → Add New Wallpaper → Photos</strong></li>
+      <li>Select the downloaded image, tap <strong>Add</strong></li>
+      <li>Choose <strong>Lock Screen</strong> (not Home Screen)</li>
+      <li>Tap <strong>Set as Wallpaper Pair</strong></li>
+    </ol>
+  </div>
+
+  <script>
+    const W = 1170;
+    const H = 2532;
+    const canvas = document.getElementById('c');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    function draw() {
+      const med     = document.getElementById('med').value.toUpperCase();
+      const morning = document.getElementById('morning').value;
+      const evening = document.getElementById('evening').value;
+
+      // Background
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+
+      // Helper: centered text
+      function text(str, y, size, weight = '700', color = '#fff') {
+        ctx.font = `${weight} ${size}px 'Helvetica Neue', Helvetica, Arial, sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(str, W / 2, y);
+      }
+
+      // Layout anchored below the lock screen clock (iPhone 12 Pro: 2532×1170)
+      const startY = 960;
+
+      // Emergency access hint
+      text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + 28, 30, '400', '#555555');
+
+      // Medical cross — proper 1:3 ratio (like Red Cross)
+      const cx = W / 2;
+      const cy = startY + 210;
+      const S = 190;
+      const t = Math.round(S / 3);
+      ctx.fillStyle = '#8b2020';
+      ctx.fillRect(cx - t / 2, cy - S / 2, t, S);
+      ctx.fillRect(cx - S / 2, cy - t / 2, S, t);
+
+      // Main message
+      text('I AM NOT DRUNK', startY + 420, 88, '900', '#b0b0b0');
+      text('I AM EPILEPTIC', startY + 540, 88, '900', '#b0b0b0');
+
+      // Divider
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(120, startY + 620, W - 240, 2);
+
+      // Medication info
+      text(med, startY + 700, 62, '700', '#aaaaaa');
+      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + 790, 50, '400', '#6a6a6a');
+
+      // Footer
+      text('PROTECT HEAD  ·  DO NOT RESTRAIN  ·  TURN ON SIDE', startY + 860, 34, '400', '#4a4a4a');
+      text('STAY CALM  ·  TIME IT  ·  CALL 112 IF OVER 5 MIN', startY + 930, 34, '400', '#3a3a3a');
+    }
+
+    // Persist inputs in localStorage
+    const inputs = document.querySelectorAll('#config input');
+    inputs.forEach(el => {
+      const saved = localStorage.getItem('epilepsy-' + el.id);
+      if (saved !== null) el.value = saved;
+      el.addEventListener('input', () => {
+        localStorage.setItem('epilepsy-' + el.id, el.value);
+        draw();
+      });
+    });
+
+    draw();
+
+    document.getElementById('dl').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.download = 'epilepsy-lockscreen.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    });
+  </script>
+</body>
+</html>
