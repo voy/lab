@@ -148,7 +148,9 @@ def build_forecast_table(forecast):
 
 def create_screenshot(data):
     print("Creating screenshot...")
+    SPACIOUS = True  # set to False to revert to compact layout
     rows_html = build_forecast_table(data['forecast'])
+    table_class = "spacious" if SPACIOUS else ""
 
     html_content = f"""
     <html>
@@ -178,8 +180,8 @@ def create_screenshot(data):
                 padding-bottom: 10px;
                 text-align: center;
             }}
-            .date {{ font-size: 26px; font-weight: bold; }}
-            .svatek {{ font-size: 18px; margin-top: 3px; }}
+            .date {{ font-size: 32px; font-weight: bold; }}
+            .svatek {{ font-size: 21px; margin-top: 5px; }}
             .svatek span {{ font-weight: bold; }}
 
             table {{
@@ -218,6 +220,18 @@ def create_screenshot(data):
                 font-size: 12px; line-height: 1.4;
                 color: #333;
             }}
+            .spacious {{ margin: 0 4px; }}
+            .spacious td {{ padding: 18px 6px; }}
+            .spacious .col-label {{ width: 125px; }}
+            .spacious .row-icon {{ width: 64px; height: 64px; }}
+            .spacious .col-icon {{ width: 72px; }}
+            .spacious .label-name {{ font-size: 15px; }}
+            .spacious .label-time {{ font-size: 14px; }}
+            .spacious .col-temp {{ font-size: 38px; padding-right: 16px; }}
+            .spacious .col-desc {{ font-size: 14px; padding-left: 4px; }}
+            .spacious .col-precip div {{ font-size: 13px; }}
+            .spacious .col-precip .icon {{ font-size: 15px; }}
+
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
                 font-size: 11px; color: #555;
@@ -241,8 +255,8 @@ def create_screenshot(data):
                 align-items: center;
                 gap: 1px;
             }}
-            .sun-val {{ font-weight: bold; font-size: 20px; }}
-            .sun-label {{ font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.3px; }}
+            .sun-val {{ font-weight: bold; font-size: 24px; }}
+            .sun-label {{ font-size: 12px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.3px; }}
         </style>
     </head>
     <body>
@@ -251,7 +265,7 @@ def create_screenshot(data):
             <div class="svatek">Svátek: <span>{data['name']}</span></div>
         </div>
 
-        <table>
+        <table class="{table_class}">
             {rows_html}
         </table>
 
