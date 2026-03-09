@@ -345,7 +345,7 @@ def main():
                 f.write(img)
             print("Done. dashboard.png saved locally.")
         else:
-            print(f"Uploading to gs://{BUCKET_NAME}/dashboard.png ...")
+            print(f"Uploading to gs://{BUCKET_NAME}/{FEED_ID}/dashboard.png ...")
             client = storage.Client()
             bucket = client.bucket(BUCKET_NAME)
             blob = bucket.blob(f"{FEED_ID}/dashboard.png")
