@@ -1,0 +1,7 @@
+requests
+astral
+pytz
+playwright
+google-cloud-storage
+# Let uv pick the best greenlet version automatically
+greenlet
