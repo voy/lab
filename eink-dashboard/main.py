@@ -10,8 +10,9 @@ from google.cloud import storage
 # --- CONFIGURATION ---
 LAT, LON = 52.5200, 13.4050  # Berlin
 TIMEZONE = ZoneInfo("Europe/Berlin")
-BUCKET_NAME = os.getenv("BUCKET_NAME", "your-eink-bucket-name")
-IS_CLOUD = os.getenv('K_SERVICE') or os.getenv('GOOGLE_CLOUD_PROJECT')
+BUCKET_NAME = os.getenv("BUCKET_NAME")
+FEED_ID = os.getenv("FEED_ID")
+IS_CLOUD = os.getenv('CLOUD_RUN_JOB')
 
 SYMBOL_CZ = {
     'clearsky': 'Jasno',
@@ -43,12 +44,8 @@ def symbol_to_cz(symbol_code):
     base = symbol_code.replace('_day', '').replace('_night', '').replace('_polartwilight', '')
     return SYMBOL_CZ.get(base, base.replace('_', ' ').capitalize())
 
-def get_forecast_slot(timeseries, target_hour, now_local):
-    """Find the forecast entry for target_hour on today, or tomorrow if that hour has passed."""
-    target_date = now_local.date()
-    if now_local.hour >= target_hour:
-        target_date += datetime.timedelta(days=1)
-
+def get_forecast_slot_for_date(timeseries, target_date, target_hour):
+    """Find the forecast entry closest to target_hour on target_date."""
     best, best_diff = None, float('inf')
     for entry in timeseries:
         t = datetime.datetime.fromisoformat(entry['time'].replace('Z', '+00:00'))
@@ -63,32 +60,54 @@ def get_forecast_slot(timeseries, target_hour, now_local):
 
 def get_data():
     print("Gathering data...")
-    headers = {'User-Agent': 'EinkDashboard/1.0 (admin@example.com)'}
+    headers = {'User-Agent': 'EinkDashboard/1.0'}
 
     weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={LAT}&lon={LON}"
+    print(f"  Fetching weather: {weather_url}")
     w_res = requests.get(weather_url, headers=headers, timeout=10)
+    print(f"  Weather response: HTTP {w_res.status_code}")
+    w_res.raise_for_status()
     timeseries = w_res.json()['properties']['timeseries']
+    print(f"  Got {len(timeseries)} forecast entries")
 
     now_local = datetime.datetime.now(TIMEZONE)
+    print(f"  Local time: {now_local.isoformat()}")
 
-    slots = [("Ráno", 7), ("Poledne", 12), ("Odpoledne", 15), ("Večer", 19)]
+    slot_defs = [("Ráno", 7), ("Poledne", 12), ("Odpoledne", 15), ("Večer", 19)]
+    today = now_local.date()
+    tomorrow = today + datetime.timedelta(days=1)
+
+    # Build 8 candidates (today + tomorrow), keep future ones, take first 4
+    candidates = []
+    for day_offset, date in [(0, today), (1, tomorrow)]:
+        for label, hour in slot_defs:
+            candidates.append((date, label, hour, day_offset == 1))
+
     forecast = []
-    for label, hour in slots:
-        entry = get_forecast_slot(timeseries, hour, now_local)
+    for date, label, hour, is_tomorrow in candidates:
+        if len(forecast) == 4:
+            break
+        # Skip slots that have already passed today
+        if date == today and now_local.hour >= hour:
+            continue
+        entry = get_forecast_slot_for_date(timeseries, date, hour)
         if entry:
             t_local = datetime.datetime.fromisoformat(entry['time'].replace('Z', '+00:00')).astimezone(TIMEZONE)
             temp = round(entry['data']['instant']['details']['air_temperature'])
             summary = entry['data'].get('next_1_hours') or entry['data'].get('next_6_hours') or {}
             symbol = summary.get('summary', {}).get('symbol_code', 'cloudy')
             precip = summary.get('details', {}).get('probability_of_precipitation') or 0
-            forecast.append({"label": label, "time": t_local.strftime("%H:%M"), "temp": temp, "symbol": symbol, "desc": symbol_to_cz(symbol), "precip": precip})
+            forecast.append({"label": label, "time": t_local.strftime("%H:%M"), "temp": temp, "symbol": symbol, "desc": symbol_to_cz(symbol), "precip": precip, "tomorrow": is_tomorrow})
+            print(f"  {'[zítra] ' if is_tomorrow else ''}{label}: {temp}°C, {symbol}, {precip}% precip")
 
     # Czech name day + date string
     name_day = ""
     date_str = datetime.date.today().strftime("%-d. %-m. %Y")
     day_of_week = ""
+    print("  Fetching name day...")
     try:
         n_res = requests.get("https://svatkyapi.cz/api/day", timeout=5)
+        print(f"  Name day response: HTTP {n_res.status_code}")
         if n_res.status_code == 200:
             n_data = n_res.json()
             name_day = n_data.get('name', '')
@@ -98,8 +117,9 @@ def get_data():
             year = n_data.get('year', '')
             if month_gen:
                 date_str = f"{day_num}. {month_gen} {year}"
+            print(f"  Name day: {name_day}, date: {date_str}")
     except Exception as e:
-        print(f"Name day API failed: {e}")
+        print(f"  Name day API failed: {e}")
 
     # Daylight
     city = LocationInfo("Berlin", "DE", "Europe/Berlin", LAT, LON)
@@ -129,7 +149,11 @@ def get_data():
 
 def build_forecast_table(forecast):
     rows_html = ""
+    divider_inserted = False
     for f in forecast:
+        if f.get("tomorrow") and not divider_inserted:
+            rows_html += '<tr class="divider-row"><td colspan="5"><span>Zítra</span></td></tr>'
+            divider_inserted = True
         icon_url = f"https://raw.githubusercontent.com/metno/weathericons/main/weather/png/{f['symbol']}.png"
         precip_val = int(f["precip"]) if f.get("precip") is not None else 0
         rows_html += f"""
@@ -147,7 +171,7 @@ def build_forecast_table(forecast):
 
 
 def create_screenshot(data):
-    print("Creating screenshot...")
+    print("Creating screenshot (launching Chromium)...")
     SPACIOUS = True  # set to False to revert to compact layout
     rows_html = build_forecast_table(data['forecast'])
     table_class = "spacious" if SPACIOUS else ""
@@ -199,6 +223,15 @@ def create_screenshot(data):
                 display: block;
                 font-size: 13px; font-weight: 700;
                 text-transform: uppercase; letter-spacing: 0.5px;
+            }}
+            .divider-row td {{
+                padding: 4px 0 2px;
+                border-bottom: 1px solid #ccc;
+            }}
+            .divider-row span {{
+                font-size: 10px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 1px;
+                opacity: 0.4;
             }}
             .label-time {{
                 display: block;
@@ -294,12 +327,15 @@ def create_screenshot(data):
         page = browser.new_page(viewport={'width': 480, 'height': 800})
         page.set_content(html_content)
         page.evaluate("document.fonts.ready")
+        print("  Rendering page...")
         img_bytes = page.screenshot(type='png')
         browser.close()
+    print(f"  Screenshot size: {len(img_bytes)} bytes")
     return img_bytes
 
 
 def main():
+    print(f"Starting. IS_CLOUD={bool(IS_CLOUD)}, BUCKET_NAME={BUCKET_NAME}")
     try:
         data = get_data()
         img = create_screenshot(data)
@@ -307,18 +343,21 @@ def main():
         if not IS_CLOUD:
             with open("dashboard.png", "wb") as f:
                 f.write(img)
-            print("Success! dashboard.png saved locally.")
+            print("Done. dashboard.png saved locally.")
         else:
+            print(f"Uploading to gs://{BUCKET_NAME}/dashboard.png ...")
             client = storage.Client()
             bucket = client.bucket(BUCKET_NAME)
-            blob = bucket.blob("dashboard.png")
+            blob = bucket.blob(f"{FEED_ID}/dashboard.png")
             blob.cache_control = "no-store, max-age=0"
             blob.upload_from_string(img, content_type='image/png')
-            blob.make_public()
-            print("Success! Uploaded to Cloud Storage.")
+            print(f"Done. https://storage.googleapis.com/{BUCKET_NAME}/{FEED_ID}/dashboard.png")
 
     except Exception as e:
-        print(f"Error occurred: {e}")
+        import traceback
+        print(f"Error: {e}")
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":

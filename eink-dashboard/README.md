@@ -1,43 +1,83 @@
 # eink-dashboard
 
-Generates a 480×800px greyscale PNG for an e-ink display. Runs locally or on Google Cloud Run (triggered by Cloud Scheduler), uploading the result to a public GCS bucket.
+Generates a 480×800px greyscale PNG for an e-ink display, updated hourly via Google Cloud Run. The image is served from a public GCS bucket at an unguessable UUID path.
 
 ## What it shows
 
-**Header**
-- Day of week + date in Czech (e.g. *Pondělí 9. března 2026*)
-- Name day from [svatkyapi.cz](https://svatkyapi.cz)
+**Header** — day of week + date in Czech, name day from [svatkyapi.cz](https://svatkyapi.cz)
 
-**Weather forecast** — 4-row table (data from [met.no](https://api.met.no))
+**Weather forecast** — 4 time slots (data from [met.no](https://api.met.no)):
 - Ráno (07:00), Poledne (12:00), Odpoledne (15:00), Večer (19:00)
-- Each slot shows: weather icon, temperature, Czech description, precipitation probability
-- Slots always show the *next* occurrence — if 12:00 has passed, it shows tomorrow's 12:00
+- Each slot: weather icon, temperature, Czech description, precipitation %
+- Always shows the *next* occurrence — if 12:00 has passed, shows tomorrow's
 
-**Footer**
-- Sunrise, day length (with ±diff vs yesterday), sunset
+**Footer** — sunrise, day length (with ±diff vs yesterday), sunset
 
-## Running locally
+## Architecture
+
+```
+Cloud Scheduler (hourly)
+  → Cloud Run Job
+      fetches weather + name day APIs
+      renders HTML → PNG via headless Chromium
+      uploads to GCS
+  → GCS bucket (public-read)
+      ← e-ink device polls every hour
+```
+
+## Local development
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install chromium
 python main.py
 # output: dashboard.png
 ```
 
-## Layout toggle
+Runs locally without any GCP credentials — saves `dashboard.png` to disk.
 
-In `create_screenshot()` there is a `SPACIOUS` flag:
+## GCP deployment
 
-```python
-SPACIOUS = True  # False = compact, True = larger rows/icons
+### Prerequisites (one-time, manual)
+
+1. Create a GCP project and enable billing
+2. `gcloud auth login && gcloud config set project $PROJ`
+3. Enable APIs:
+   ```bash
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
+     cloudscheduler.googleapis.com storage.googleapis.com \
+     containerregistry.googleapis.com --project=$PROJ
+   ```
+4. Authenticate Docker: `gcloud auth configure-docker gcr.io`
+
+### Configuration
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+PROJ=your-gcp-project-id
+BUCKET_NAME=your-bucket-name
+FEED_ID=your-uuid   # generate with: python3 -c "import uuid; print(uuid.uuid4())"
 ```
 
-## Cloud deployment
+`.env` is gitignored and never committed.
 
-Set the `BUCKET_NAME` environment variable. The script detects it's running on Cloud Run via `K_SERVICE` or `GOOGLE_CLOUD_PROJECT` and uploads to GCS instead of saving locally.
+### First deploy
+
+```bash
+./deploy.sh
+```
+
+Sets up the bucket, service account, IAM roles, builds + pushes the Docker image, deploys the Cloud Run Job, and creates the hourly Cloud Scheduler trigger.
+
+### Redeploy (after code changes)
+
+```bash
+./redeploy.sh
+```
+
+Rebuilds the image using local Docker layer cache (fast — only the code layer rebuilds), pushes, updates the job, and triggers a test run.
 
 ## Dependencies
 
