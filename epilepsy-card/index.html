@@ -114,12 +114,12 @@
       ctx.fillRect(0, 0, W, H);
 
       // Helper: centered text
-      function text(str, y, size, weight = '700', color = '#fff') {
+      function text(str, y, size, weight = '700', color = '#fff', x = W / 2) {
         ctx.font = `${weight} ${size}px 'Helvetica Neue', Helvetica, Arial, sans-serif`;
         ctx.fillStyle = color;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(str, W / 2, y);
+        ctx.fillText(str, x, y);
       }
 
       // Layout anchored below the lock screen clock (iPhone 12 Pro: 2532×1170)
@@ -127,32 +127,32 @@
       const startY = 700;
 
       // Emergency access hint
-      text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + 28, 30, '400', '#555555');
+      text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + 28, 30, '400', '#888888');
 
-      // Medical cross — proper 1:3 ratio (like Red Cross)
-      const cx = W / 2;
-      const cy = startY + 210;
+      // Medical cross (left) + alert text (right) — same vertical center
+      const cy = startY + 230;
       const S = 190;
       const t = Math.round(S / 3);
-      ctx.fillStyle = '#8b2020';
-      ctx.fillRect(cx - t / 2, cy - S / 2, t, S);
-      ctx.fillRect(cx - S / 2, cy - t / 2, S, t);
+      const crossX = 260;
+      const textX = W / 2 + 130;
+      ctx.fillStyle = '#c03535';
+      ctx.fillRect(crossX - t / 2, cy - S / 2, t, S);
+      ctx.fillRect(crossX - S / 2, cy - t / 2, S, t);
 
-      // Main message
-      text('I AM NOT DRUNK', startY + 420, 88, '900', '#b0b0b0');
-      text('I AM EPILEPTIC', startY + 540, 88, '900', '#b0b0b0');
+      text('MEDICAL ALERT', cy - 70, 58, '400', '#888888', textX);
+      text('EPILEPSY', cy + 45, 108, '900', '#cccccc', textX);
 
       // Divider
-      ctx.fillStyle = '#2a2a2a';
-      ctx.fillRect(120, startY + 620, W - 240, 2);
+      ctx.fillStyle = '#333333';
+      ctx.fillRect(120, startY + 410, W - 240, 2);
 
       // Medication info
-      text(med, startY + 700, 62, '700', '#aaaaaa');
-      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + 790, 50, '400', '#6a6a6a');
+      text(med, startY + 540, 62, '700', '#bbbbbb');
+      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + 630, 50, '400', '#888888');
 
       // Footer
-      text('PROTECT HEAD  ·  DO NOT RESTRAIN  ·  TURN ON SIDE', startY + 860, 34, '400', '#4a4a4a');
-      text('STAY CALM  ·  TIME IT  ·  CALL 112 IF OVER 5 MIN', startY + 930, 34, '400', '#3a3a3a');
+      text('PROTECT HEAD  ·  DO NOT RESTRAIN  ·  TURN ON SIDE', startY + 740, 34, '400', '#666666');
+      text('STAY CALM  ·  TIME IT  ·  CALL 112 IF OVER 5 MIN', startY + 810, 34, '400', '#666666');
     }
 
     // Persist inputs in localStorage
