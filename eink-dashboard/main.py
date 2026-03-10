@@ -74,7 +74,7 @@ def get_data():
     print(f"  Local time: {now_local.isoformat()}")
 
     # expires_at: hour at which the slot is replaced by the next one
-    slot_defs = [("Ráno", 7, 12), ("Poledne", 12, 15), ("Odpoledne", 15, 19), ("Večer", 19, 24)]
+    slot_defs = [("Ráno", 7, 12), ("Pol.", 12, 15), ("Odpo.", 15, 19), ("Večer", 19, 24)]
     today = now_local.date()
     tomorrow = today + datetime.timedelta(days=1)
 
@@ -253,7 +253,7 @@ def create_screenshot(data):
             }}
             .col-desc {{
                 font-size: 12px; line-height: 1.4;
-                color: #333;
+                color: black;
             }}
             .spacious {{ margin: 0 4px; }}
             .spacious td {{ padding: 18px 6px; }}
@@ -264,12 +264,12 @@ def create_screenshot(data):
             .spacious .label-time {{ font-size: 14px; }}
             .spacious .col-temp {{ font-size: 38px; padding-right: 16px; }}
             .spacious .col-desc {{ font-size: 14px; padding-left: 4px; }}
-            .spacious .col-precip div {{ font-size: 13px; }}
-            .spacious .col-precip .icon {{ font-size: 15px; }}
+            .spacious .col-precip div {{ font-size: 16px; }}
+            .spacious .col-precip .icon {{ font-size: 17px; }}
 
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
-                font-size: 11px; color: #555;
+                font-size: 14px; color: #555;
                 white-space: nowrap;
                 display: flex; align-items: center; gap: 2px;
             }}
