@@ -243,7 +243,7 @@ def create_screenshot(data):
             .col-icon {{ width: 48px; text-align: center; }}
             .row-icon {{
                 width: 44px; height: 44px;
-                filter: contrast(600%) brightness(50%);
+                filter: contrast(800%) brightness(35%);
                 display: block; margin: 0 auto;
             }}
             .col-temp {{
