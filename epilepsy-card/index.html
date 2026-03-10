@@ -126,6 +126,16 @@
       // startY chosen so full card fits between clock bottom (~580px) and media player top (~1750px)
       const startY = 700;
 
+      // Card background
+      const cardX = 75, cardY = startY - 65, cardW = W - 150, cardH = 950, cardR = 44;
+      ctx.beginPath();
+      ctx.roundRect(cardX, cardY, cardW, cardH, cardR);
+      ctx.fillStyle = '#111111';
+      ctx.fill();
+      ctx.strokeStyle = '#282828';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
       // Emergency access hint
       text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + 28, 30, '400', '#888888');
 
