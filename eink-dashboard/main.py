@@ -269,11 +269,11 @@ def create_screenshot(data):
 
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
-                font-size: 14px; color: black; font-weight: 600;
+                font-size: 18px; color: black; font-weight: 600;
                 white-space: nowrap;
                 display: flex; align-items: center; gap: 2px;
             }}
-            .col-precip .icon {{ font-size: 13px; line-height: 0; position: relative; top: 0.5px; }}
+            .col-precip .icon {{ font-size: 17px; line-height: 0; position: relative; top: 0.5px; }}
 
             .footer {{
                 border-top: 3px solid black;
