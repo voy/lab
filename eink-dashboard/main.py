@@ -106,7 +106,8 @@ def get_data():
     day_of_week = ""
     print("  Fetching name day...")
     try:
-        n_res = requests.get("https://svatkyapi.cz/api/day", timeout=5)
+        local_date = now_local.strftime("%Y-%m-%d")
+        n_res = requests.get(f"https://svatkyapi.cz/api/day/{local_date}", timeout=5)
         print(f"  Name day response: HTTP {n_res.status_code}")
         if n_res.status_code == 200:
             n_data = n_res.json()
