@@ -27,7 +27,7 @@
       max-width: 400px;
     }
     label { font-size: 0.75rem; opacity: 0.5; letter-spacing: 0.08em; text-transform: uppercase; }
-    input {
+    input, select {
       background: #222;
       color: #fff;
       border: 1px solid #333;
@@ -37,7 +37,7 @@
       font-family: inherit;
       width: 100%;
     }
-    input:focus { outline: none; border-color: #666; }
+    input:focus, select:focus { outline: none; border-color: #666; }
     canvas {
       border: 1px solid #333;
       border-radius: 8px;
@@ -74,6 +74,25 @@
   <h1>Epilepsy Lock Screen</h1>
 
   <form id="config">
+    <label for="model">iPhone model</label>
+    <select id="model">
+      <optgroup label="iPhone 17">
+        <option value="17">iPhone 17 / 17 Pro — 1206 × 2622</option>
+        <option value="17air">iPhone 17 Air — 1260 × 2736</option>
+        <option value="17promax">iPhone 17 Pro Max — 1320 × 2868</option>
+      </optgroup>
+      <optgroup label="iPhone 16">
+        <option value="16pro">iPhone 16 Pro — 1206 × 2622</option>
+        <option value="16promax">iPhone 16 Pro Max — 1320 × 2868</option>
+      </optgroup>
+      <optgroup label="iPhone 15">
+        <option value="15pro">iPhone 15 / 15 Pro — 1179 × 2556</option>
+        <option value="15promax">iPhone 15 Pro Max — 1290 × 2796</option>
+      </optgroup>
+      <optgroup label="iPhone 12 / 13">
+        <option value="12pro">iPhone 12 / 13 Pro — 1170 × 2532</option>
+      </optgroup>
+    </select>
     <label for="med">Medication</label>
     <input id="med" type="text" value="MY MEDICATION" spellcheck="false">
     <label for="morning">Morning dose</label>
@@ -87,7 +106,7 @@
 
   <div class="instructions">
     <ol>
-      <li>Fill in your medication details above</li>
+      <li>Select your iPhone model and fill in your medication details</li>
       <li>Download the PNG</li>
       <li>On iPhone: <strong>Settings → Wallpaper → Add New Wallpaper → Photos</strong></li>
       <li>Select the downloaded image, tap <strong>Add</strong></li>
@@ -97,17 +116,30 @@
   </div>
 
   <script>
-    const W = 1170;
-    const H = 2532;
+    const MODELS = {
+      '17':       { w: 1206, h: 2622 },
+      '17air':    { w: 1260, h: 2736 },
+      '17promax': { w: 1320, h: 2868 },
+      '16pro':    { w: 1206, h: 2622 },
+      '16promax': { w: 1320, h: 2868 },
+      '15pro':    { w: 1179, h: 2556 },
+      '15promax': { w: 1290, h: 2796 },
+      '12pro':    { w: 1170, h: 2532 },
+    };
+
     const canvas = document.getElementById('c');
-    canvas.width = W;
-    canvas.height = H;
     const ctx = canvas.getContext('2d');
 
     function draw() {
       const med     = document.getElementById('med').value.toUpperCase();
       const morning = document.getElementById('morning').value;
       const evening = document.getElementById('evening').value;
+      const { w: W, h: H } = MODELS[document.getElementById('model').value];
+
+      canvas.width  = W;
+      canvas.height = H;
+
+      const sc = W / 1170;
 
       // Background
       ctx.fillStyle = '#000';
@@ -115,19 +147,22 @@
 
       // Helper: centered text
       function text(str, y, size, weight = '700', color = '#fff', x = W / 2) {
-        ctx.font = `${weight} ${size}px 'Helvetica Neue', Helvetica, Arial, sans-serif`;
+        ctx.font = `${weight} ${Math.round(size * sc)}px 'Helvetica Neue', Helvetica, Arial, sans-serif`;
         ctx.fillStyle = color;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(str, x, y);
       }
 
-      // Layout anchored below the lock screen clock (iPhone 12 Pro: 2532×1170)
-      // startY chosen so full card fits between clock bottom (~580px) and media player top (~1750px)
-      const startY = 700;
+      // Layout anchored below the lock screen clock
+      const startY = Math.round(700 * sc);
 
       // Card background
-      const cardX = 75, cardY = startY - 65, cardW = W - 150, cardH = 950, cardR = 44;
+      const cardX = Math.round(75 * sc);
+      const cardY = startY - Math.round(65 * sc);
+      const cardW = W - Math.round(150 * sc);
+      const cardH = Math.round(950 * sc);
+      const cardR = Math.round(44 * sc);
       ctx.beginPath();
       ctx.roundRect(cardX, cardY, cardW, cardH, cardR);
       ctx.fillStyle = '#111111';
@@ -137,36 +172,36 @@
       ctx.stroke();
 
       // Emergency access hint
-      text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + 28, 30, '400', '#888888');
+      text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + Math.round(28 * sc), 30, '400', '#888888');
 
       // Medical cross (left) + alert text (right) — same vertical center
-      const cy = startY + 230;
-      const S = 190;
-      const t = Math.round(S / 3);
-      const crossX = 260;
-      const textX = W / 2 + 130;
+      const cy = startY + Math.round(230 * sc);
+      const S  = Math.round(190 * sc);
+      const t  = Math.round(S / 3);
+      const crossX = Math.round(260 * sc);
+      const textX  = W / 2 + Math.round(130 * sc);
       ctx.fillStyle = '#c03535';
       ctx.fillRect(crossX - t / 2, cy - S / 2, t, S);
       ctx.fillRect(crossX - S / 2, cy - t / 2, S, t);
 
-      text('MEDICAL ALERT', cy - 70, 58, '400', '#888888', textX);
-      text('EPILEPSY', cy + 45, 108, '900', '#cccccc', textX);
+      text('MEDICAL ALERT', cy - Math.round(70 * sc), 58, '400', '#888888', textX);
+      text('EPILEPSY',      cy + Math.round(45 * sc), 108, '900', '#cccccc', textX);
 
       // Divider
       ctx.fillStyle = '#333333';
-      ctx.fillRect(120, startY + 410, W - 240, 2);
+      ctx.fillRect(Math.round(120 * sc), startY + Math.round(410 * sc), W - Math.round(240 * sc), 2);
 
       // Medication info
-      text(med, startY + 540, 62, '700', '#bbbbbb');
-      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + 630, 50, '400', '#888888');
+      text(med, startY + Math.round(540 * sc), 62, '700', '#bbbbbb');
+      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + Math.round(630 * sc), 50, '400', '#888888');
 
       // Footer
-      text('PROTECT HEAD  ·  DO NOT RESTRAIN  ·  TURN ON SIDE', startY + 740, 34, '400', '#666666');
-      text('STAY CALM  ·  TIME IT  ·  CALL 112 IF OVER 5 MIN', startY + 810, 34, '400', '#666666');
+      text('PROTECT HEAD  ·  DO NOT RESTRAIN  ·  TURN ON SIDE', startY + Math.round(740 * sc), 34, '400', '#666666');
+      text('STAY CALM  ·  TIME IT  ·  CALL 112 IF OVER 5 MIN',  startY + Math.round(810 * sc), 34, '400', '#666666');
     }
 
-    // Persist inputs in localStorage
-    const inputs = document.querySelectorAll('#config input');
+    // Persist inputs and model selection in localStorage
+    const inputs = document.querySelectorAll('#config input, #config select');
     inputs.forEach(el => {
       const saved = localStorage.getItem('epilepsy-' + el.id);
       if (saved !== null) el.value = saved;
