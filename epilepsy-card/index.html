@@ -37,6 +37,23 @@
       font-family: inherit;
       width: 100%;
     }
+    input[type="range"] {
+      padding: 0;
+      border: none;
+      background: none;
+      accent-color: #fff;
+    }
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .range-val {
+      font-size: 0.85rem;
+      color: #888;
+      min-width: 2.5rem;
+      text-align: right;
+    }
     input:focus, select:focus { outline: none; border-color: #666; }
     canvas {
       border: 1px solid #333;
@@ -63,9 +80,7 @@
       line-height: 1.7;
       color: #666;
     }
-    .instructions ol {
-      padding-left: 1.2em;
-    }
+    .instructions ol { padding-left: 1.2em; }
     .instructions li { margin-bottom: 0.2rem; }
     .instructions strong { color: #888; font-weight: 600; }
   </style>
@@ -99,6 +114,18 @@
     <input id="morning" type="text" value="000 mg" spellcheck="false">
     <label for="evening">Evening dose</label>
     <input id="evening" type="text" value="000 mg" spellcheck="false">
+    <label for="emergency">Emergency no.</label>
+    <input id="emergency" type="text" value="112" spellcheck="false">
+    <label for="topmargин">Top margin</label>
+    <div class="range-row">
+      <input id="topmargin" type="range" min="15" max="55" value="32" step="1">
+      <span class="range-val" id="topmargin-val">32%</span>
+    </div>
+    <label for="crossoffset">Cross position</label>
+    <div class="range-row">
+      <input id="crossoffset" type="range" min="10" max="45" value="22" step="1">
+      <span class="range-val" id="crossoffset-val">22%</span>
+    </div>
   </form>
 
   <canvas id="c"></canvas>
@@ -106,7 +133,7 @@
 
   <div class="instructions">
     <ol>
-      <li>Select your iPhone model and fill in your medication details</li>
+      <li>Select your iPhone model and fill in your details</li>
       <li>Download the PNG</li>
       <li>On iPhone: <strong>Settings → Wallpaper → Add New Wallpaper → Photos</strong></li>
       <li>Select the downloaded image, tap <strong>Add</strong></li>
@@ -131,17 +158,20 @@
     const ctx = canvas.getContext('2d');
 
     function draw() {
-      const med     = document.getElementById('med').value.toUpperCase();
-      const morning = document.getElementById('morning').value;
-      const evening = document.getElementById('evening').value;
+      const med         = document.getElementById('med').value.toUpperCase();
+      const morning     = document.getElementById('morning').value;
+      const evening     = document.getElementById('evening').value;
+      const emergency   = document.getElementById('emergency').value;
+      const topMarginPct  = parseFloat(document.getElementById('topmargin').value) / 100;
+      const crossOffsetPct = parseFloat(document.getElementById('crossoffset').value) / 100;
       const { w: W, h: H } = MODELS[document.getElementById('model').value];
 
       canvas.width  = W;
       canvas.height = H;
 
-      const scX = W / 1170; // horizontal scale
-      const scY = H / 2532; // vertical scale
-      const sc  = scX;      // font sizes follow width
+      const scX = W / 1170;
+      const scY = H / 2532;
+      const sc  = scX; // font sizes follow width
 
       // Background
       ctx.fillStyle = '#000';
@@ -156,14 +186,13 @@
         ctx.fillText(str, x, y);
       }
 
-      // Layout anchored below the lock screen clock — vertical positions scale by height
-      const startY = Math.round(800 * scY);
+      const startY = Math.round(H * topMarginPct);
 
       // Card background
       const cardX = Math.round(75 * scX);
       const cardY = startY - Math.round(65 * scY);
       const cardW = W - Math.round(150 * scX);
-      const cardH = Math.round(950 * scY);
+      const cardH = Math.round(980 * scY);
       const cardR = Math.round(44 * scX);
       ctx.beginPath();
       ctx.roundRect(cardX, cardY, cardW, cardH, cardR);
@@ -177,10 +206,10 @@
       text('PRESS SIDE BUTTON 5×  →  EMERGENCY SOS  →  MEDICAL ID', startY + Math.round(28 * scY), 30, '400', '#888888');
 
       // Medical cross (left) + alert text (right) — same vertical center
-      const cy = startY + Math.round(230 * scY);
-      const S  = Math.round(190 * scX);
-      const t  = Math.round(S / 3);
-      const crossX = Math.round(260 * scX);
+      const cy     = startY + Math.round(230 * scY);
+      const S      = Math.round(190 * scX);
+      const t      = Math.round(S / 3);
+      const crossX = Math.round(W * crossOffsetPct);
       const textX  = W / 2 + Math.round(130 * scX);
       ctx.fillStyle = '#c03535';
       ctx.fillRect(crossX - t / 2, cy - S / 2, t, S);
@@ -197,16 +226,29 @@
       text(med, startY + Math.round(540 * scY), 62, '700', '#bbbbbb');
       text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + Math.round(630 * scY), 50, '400', '#888888');
 
-      // Footer
-      text('PROTECT HEAD  ·  DO NOT RESTRAIN  ·  TURN ON SIDE', startY + Math.round(740 * scY), 34, '400', '#666666');
-      text('STAY CALM  ·  TIME IT  ·  CALL 112 IF OVER 5 MIN',  startY + Math.round(810 * scY), 34, '400', '#666666');
+      // Footer — DO NOT RESTRAIN gets its own bright line
+      text('DO NOT RESTRAIN', startY + Math.round(730 * scY), 40, '700', '#aaaaaa');
+      text('PROTECT HEAD  ·  TURN ON SIDE  ·  STAY CALM', startY + Math.round(800 * scY), 32, '400', '#666666');
+      text(`TIME IT  ·  CALL ${emergency} IF OVER 5 MIN`, startY + Math.round(858 * scY), 32, '400', '#666666');
     }
 
-    // Persist inputs and model selection in localStorage
+    // Sync range display values
+    document.getElementById('topmargin').addEventListener('input', function() {
+      document.getElementById('topmargin-val').textContent = this.value + '%';
+    });
+    document.getElementById('crossoffset').addEventListener('input', function() {
+      document.getElementById('crossoffset-val').textContent = this.value + '%';
+    });
+
+    // Persist all inputs in localStorage
     const inputs = document.querySelectorAll('#config input, #config select');
     inputs.forEach(el => {
       const saved = localStorage.getItem('epilepsy-' + el.id);
-      if (saved !== null) el.value = saved;
+      if (saved !== null) {
+        el.value = saved;
+        if (el.id === 'topmargin')   document.getElementById('topmargin-val').textContent   = saved + '%';
+        if (el.id === 'crossoffset') document.getElementById('crossoffset-val').textContent = saved + '%';
+      }
       el.addEventListener('input', () => {
         localStorage.setItem('epilepsy-' + el.id, el.value);
         draw();
