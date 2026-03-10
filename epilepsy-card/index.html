@@ -196,11 +196,17 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Emergency access hint
-      text('HOLD VOLUME + POWER  →  MEDICAL ID', startY + Math.round(28 * scY), 30, '400', '#888888');
+      // What to do — top of card, most prominent
+      text('DO NOT RESTRAIN', startY + Math.round(20 * scY), 54, '900', '#ffffff');
+      text('PROTECT HEAD  ·  TURN ON SIDE  ·  STAY CALM', startY + Math.round(100 * scY), 36, '600', '#cccccc');
+      text(`TIME IT  ·  CALL ${emergency} IF OVER 5 MIN`, startY + Math.round(158 * scY), 36, '400', '#999999');
+
+      // Divider — 65px gap above and below (from text edges)
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(Math.round(120 * scX), startY + Math.round(241 * scY), W - Math.round(240 * scX), 2);
 
       // Medical cross (left) + alert text (right) — same vertical center
-      const cy     = startY + Math.round(230 * scY);
+      const cy     = startY + Math.round(405 * scY);
       const S      = Math.round(190 * scX);
       const t      = Math.round(S / 3);
       const crossX = Math.round(260 * scX);
@@ -212,18 +218,16 @@
       text('MEDICAL ALERT', cy - Math.round(70 * scY), 58, '400', '#888888', textX);
       text('EPILEPSY',      cy + Math.round(45 * scY), 108, '900', '#cccccc', textX);
 
-      // Divider
-      ctx.fillStyle = '#333333';
-      ctx.fillRect(Math.round(120 * scX), startY + Math.round(410 * scY), W - Math.round(240 * scX), 2);
+      // Divider — 65px gap above and below (from text edges)
+      ctx.fillStyle = '#2a2a2a';
+      ctx.fillRect(Math.round(120 * scX), startY + Math.round(569 * scY), W - Math.round(240 * scX), 2);
 
       // Medication info
-      text(med, startY + Math.round(540 * scY), 62, '700', '#bbbbbb');
-      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + Math.round(630 * scY), 50, '400', '#888888');
+      text(med, startY + Math.round(665 * scY), 62, '700', '#777777');
+      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + Math.round(755 * scY), 50, '400', '#555555');
 
-      // Footer — DO NOT RESTRAIN gets its own bright line
-      text('DO NOT RESTRAIN', startY + Math.round(730 * scY), 40, '700', '#aaaaaa');
-      text('PROTECT HEAD  ·  TURN ON SIDE  ·  STAY CALM', startY + Math.round(800 * scY), 32, '400', '#666666');
-      text(`TIME IT  ·  CALL ${emergency} IF OVER 5 MIN`, startY + Math.round(858 * scY), 32, '400', '#666666');
+      // Medical ID hint — dimmed at bottom
+      text('HOLD VOLUME + POWER  →  MEDICAL ID', startY + Math.round(870 * scY), 32, '400', '#666666');
     }
 
     // Sync range display values
