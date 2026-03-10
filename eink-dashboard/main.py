@@ -218,7 +218,7 @@ def create_screenshot(data):
             tr:last-child {{ border-bottom: none; }}
             td {{ padding: 10px 4px; vertical-align: middle; }}
             .col-label {{
-                width: 110px;
+                width: 90px;
                 line-height: 1;
             }}
             .label-name {{
@@ -257,7 +257,7 @@ def create_screenshot(data):
             }}
             .spacious {{ margin: 0 4px; }}
             .spacious td {{ padding: 18px 6px; }}
-            .spacious .col-label {{ width: 125px; }}
+            .spacious .col-label {{ width: 100px; }}
             .spacious .row-icon {{ width: 64px; height: 64px; }}
             .spacious .col-icon {{ width: 72px; }}
             .spacious .label-name {{ font-size: 15px; }}
@@ -269,7 +269,7 @@ def create_screenshot(data):
 
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
-                font-size: 14px; color: #555;
+                font-size: 14px; color: black; font-weight: 600;
                 white-space: nowrap;
                 display: flex; align-items: center; gap: 2px;
             }}
