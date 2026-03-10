@@ -121,11 +121,6 @@
       <input id="topmargin" type="range" min="15" max="55" value="32" step="1">
       <span class="range-val" id="topmargin-val">32%</span>
     </div>
-    <label for="crossoffset">Cross position</label>
-    <div class="range-row">
-      <input id="crossoffset" type="range" min="10" max="45" value="22" step="1">
-      <span class="range-val" id="crossoffset-val">22%</span>
-    </div>
   </form>
 
   <canvas id="c"></canvas>
@@ -163,7 +158,6 @@
       const evening     = document.getElementById('evening').value;
       const emergency   = document.getElementById('emergency').value;
       const topMarginPct  = parseFloat(document.getElementById('topmargin').value) / 100;
-      const crossOffsetPct = parseFloat(document.getElementById('crossoffset').value) / 100;
       const { w: W, h: H } = MODELS[document.getElementById('model').value];
 
       canvas.width  = W;
@@ -209,7 +203,7 @@
       const cy     = startY + Math.round(230 * scY);
       const S      = Math.round(190 * scX);
       const t      = Math.round(S / 3);
-      const crossX = Math.round(W * crossOffsetPct);
+      const crossX = Math.round(260 * scX);
       const textX  = W / 2 + Math.round(130 * scX);
       ctx.fillStyle = '#c03535';
       ctx.fillRect(crossX - t / 2, cy - S / 2, t, S);
@@ -236,9 +230,6 @@
     document.getElementById('topmargin').addEventListener('input', function() {
       document.getElementById('topmargin-val').textContent = this.value + '%';
     });
-    document.getElementById('crossoffset').addEventListener('input', function() {
-      document.getElementById('crossoffset-val').textContent = this.value + '%';
-    });
 
     // Persist all inputs in localStorage
     const inputs = document.querySelectorAll('#config input, #config select');
@@ -247,7 +238,6 @@
       if (saved !== null) {
         el.value = saved;
         if (el.id === 'topmargin')   document.getElementById('topmargin-val').textContent   = saved + '%';
-        if (el.id === 'crossoffset') document.getElementById('crossoffset-val').textContent = saved + '%';
       }
       el.addEventListener('input', () => {
         localStorage.setItem('epilepsy-' + el.id, el.value);
