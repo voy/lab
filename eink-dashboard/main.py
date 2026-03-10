@@ -73,22 +73,23 @@ def get_data():
     now_local = datetime.datetime.now(TIMEZONE)
     print(f"  Local time: {now_local.isoformat()}")
 
-    slot_defs = [("Ráno", 7), ("Poledne", 12), ("Odpoledne", 15), ("Večer", 19)]
+    # expires_at: hour at which the slot is replaced by the next one
+    slot_defs = [("Ráno", 7, 12), ("Poledne", 12, 15), ("Odpoledne", 15, 19), ("Večer", 19, 24)]
     today = now_local.date()
     tomorrow = today + datetime.timedelta(days=1)
 
     # Build 8 candidates (today + tomorrow), keep future ones, take first 4
     candidates = []
     for day_offset, date in [(0, today), (1, tomorrow)]:
-        for label, hour in slot_defs:
-            candidates.append((date, label, hour, day_offset == 1))
+        for label, hour, expires_at in slot_defs:
+            candidates.append((date, label, hour, expires_at, day_offset == 1))
 
     forecast = []
-    for date, label, hour, is_tomorrow in candidates:
+    for date, label, hour, expires_at, is_tomorrow in candidates:
         if len(forecast) == 4:
             break
-        # Skip slots that have already passed today
-        if date == today and now_local.hour >= hour:
+        # Skip slots that have expired (next slot's time has arrived)
+        if date == today and now_local.hour >= expires_at:
             continue
         entry = get_forecast_slot_for_date(timeseries, date, hour)
         if entry:
