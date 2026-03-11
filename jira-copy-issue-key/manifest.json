@@ -1,23 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Jira Copy Issue Key",
-  "version": "1.0.0",
-  "description": "Adds a button to copy Jira issue keys next to the copy link button",
-  "permissions": ["clipboardWrite"],
+  "version": "2.0.0",
+  "description": "Copy Jira issue key or link from the toolbar popup",
+  "permissions": ["activeTab", "scripting", "clipboardWrite", "declarativeContent"],
+  "background": { "service_worker": "background.js" },
   "host_permissions": ["https://*.atlassian.net/*"],
-  "content_scripts": [
-    {
-      "matches": ["https://*.atlassian.net/*"],
-      "js": [
-        "content/issue-key-finder.js",
-        "content/button-injector.js",
-        "content/observers.js",
-        "content/content.js"
-      ],
-      "css": ["content/styles.css"],
-      "run_at": "document_idle"
-    }
-  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Copy Jira Issue Key"
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
