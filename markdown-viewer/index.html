@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown Viewer — voy/lab</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --error:     #f85149;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .breadcrumb {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .breadcrumb a { color: var(--accent); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { padding: 0 4px; }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover { border-color: var(--accent); color: var(--text); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:disabled:hover { border-color: var(--border); color: var(--muted); }
+
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Read mode ── */
+    body.read-mode,
+    body.read-wide .main {
+      display: block;
+      overflow: auto;
+    }
+
+    body.read-mode .main,
+    body.read-wide .main {
+      display: block;
+      overflow: auto;
+    }
+
+    body.read-mode .input-pane,
+    body.read-wide .input-pane { display: none; }
+
+    body.read-mode .preview-pane,
+    body.read-wide .preview-pane {
+      height: 100%;
+      display: block;
+    }
+
+    body.read-mode .pane-header,
+    body.read-wide .pane-header { display: none; }
+
+    body.read-mode .preview-scroll {
+      max-width: 740px;
+      margin: 0 auto;
+      padding: 48px 24px;
+      overflow: visible;
+    }
+
+    body.read-wide .preview-scroll {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 48px 24px;
+      overflow: visible;
+    }
+
+    body.read-mode .rendered,
+    body.read-wide .rendered { font-size: 15px; line-height: 1.8; }
+
+    /* ── Input pane ── */
+    .input-pane {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .pane-header {
+      padding: 8px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    textarea {
+      flex: 1;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 16px;
+      min-height: 0;
+    }
+
+    textarea::placeholder { color: #3d4451; }
+
+    /* ── Preview pane ── */
+    .preview-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .preview-scroll {
+      flex: 1;
+      overflow: auto;
+      padding: 24px 28px;
+      min-height: 0;
+    }
+
+    .preview-empty {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── Markdown rendering ── */
+    .rendered { line-height: 1.7; font-size: 14px; }
+
+    .rendered h1,
+    .rendered h2,
+    .rendered h3,
+    .rendered h4,
+    .rendered h5,
+    .rendered h6 {
+      color: var(--text);
+      font-weight: 600;
+      margin: 1.4em 0 0.5em;
+      line-height: 1.3;
+    }
+    .rendered h1 { font-size: 1.75em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+    .rendered h2 { font-size: 1.35em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+    .rendered h3 { font-size: 1.1em; }
+    .rendered h4 { font-size: 1em; }
+    .rendered h1:first-child,
+    .rendered h2:first-child { margin-top: 0; }
+
+    .rendered p { margin: 0.75em 0; color: var(--text); }
+    .rendered p:first-child { margin-top: 0; }
+
+    .rendered a { color: var(--accent); text-decoration: none; }
+    .rendered a:hover { text-decoration: underline; }
+
+    .rendered strong { font-weight: 600; color: var(--text); }
+    .rendered em { font-style: italic; }
+
+    .rendered ul,
+    .rendered ol {
+      margin: 0.75em 0;
+      padding-left: 1.8em;
+      color: var(--text);
+    }
+    .rendered li { margin: 0.25em 0; }
+    .rendered li + li { margin-top: 0.2em; }
+
+    .rendered code {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.15em 0.4em;
+      color: #a5d6ff;
+    }
+
+    .rendered pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 1em 0;
+    }
+
+    .rendered pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .rendered blockquote {
+      border-left: 3px solid var(--border);
+      margin: 1em 0;
+      padding: 4px 16px;
+      color: var(--muted);
+    }
+
+    .rendered hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.5em 0;
+    }
+
+    .rendered table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1em 0;
+      font-size: 13px;
+    }
+
+    .rendered th,
+    .rendered td {
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      text-align: left;
+    }
+
+    .rendered th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .rendered td { color: var(--text); }
+    .rendered tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+    .rendered img {
+      max-width: 100%;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="breadcrumb">
+    <a href="../">voy/lab</a>
+    <span class="sep">/</span>
+    <span>markdown-viewer</span>
+  </div>
+  <div class="header-actions">
+    <button class="btn" id="btn-read">Read</button>
+<button class="btn" id="btn-clear" disabled>Clear</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="input-pane">
+    <div class="pane-header">
+      <span>Markdown</span>
+      <span id="stats"></span>
+    </div>
+    <textarea id="input" placeholder="Paste or type Markdown here…" spellcheck="false"></textarea>
+  </div>
+
+  <div class="preview-pane">
+    <div class="pane-header">
+      <span>Preview</span>
+    </div>
+    <div class="preview-scroll" id="preview">
+      <div class="preview-empty">Preview will appear here</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const inputEl   = document.getElementById('input');
+  const previewEl = document.getElementById('preview');
+  const statsEl   = document.getElementById('stats');
+  const clearBtn    = document.getElementById('btn-clear');
+  const readBtn     = document.getElementById('btn-read');
+
+  const STORAGE_KEY      = 'markdown-viewer:content';
+  const STORAGE_READ_KEY = 'markdown-viewer:readState';
+
+  let readState = parseInt(localStorage.getItem(STORAGE_READ_KEY) || '0', 10);
+
+  function applyReadState() {
+    document.body.classList.remove('read-mode', 'read-wide');
+    if (readState === 1) document.body.classList.add('read-mode');
+    if (readState === 2) document.body.classList.add('read-wide');
+    readBtn.textContent = ['Read', 'Wide', 'Edit'][readState];
+  }
+
+  applyReadState();
+
+  readBtn.addEventListener('click', () => {
+    readState = (readState + 1) % 3;
+    applyReadState();
+    localStorage.setItem(STORAGE_READ_KEY, readState);
+  });
+
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) { inputEl.value = saved; update(); }
+
+  let debounceTimer;
+  inputEl.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { update(); save(); }, 80);
+  });
+
+  function save() {
+    if (inputEl.value.trim()) {
+      localStorage.setItem(STORAGE_KEY, inputEl.value);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  function update() {
+    const raw = inputEl.value;
+    if (!raw.trim()) {
+      previewEl.innerHTML = '<div class="preview-empty">Preview will appear here</div>';
+      statsEl.textContent = '';
+      clearBtn.disabled = true;
+      return;
+    }
+
+    const div = document.createElement('div');
+    div.className = 'rendered';
+    div.innerHTML = marked.parse(raw);
+    previewEl.innerHTML = '';
+    previewEl.appendChild(div);
+
+    clearBtn.disabled = false;
+
+    const words = raw.trim().split(/\s+/).length;
+    const chars = raw.length;
+    statsEl.textContent = `${words} word${words !== 1 ? 's' : ''} · ${chars} char${chars !== 1 ? 's' : ''}`;
+  }
+
+  clearBtn.addEventListener('click', () => {
+    inputEl.value = '';
+    localStorage.removeItem(STORAGE_KEY);
+    readState = 0;
+    applyReadState();
+    localStorage.setItem(STORAGE_READ_KEY, 0);
+    update();
+  });
+
+
+</script>
+</body>
+</html>
