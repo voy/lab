@@ -12,9 +12,11 @@ set -euo pipefail
 
 [ -f .env ] && set -a && source .env && set +a
 
-[ -n "${PROJ:-}"        ] || err "PROJ is not set"
-[ -n "${BUCKET_NAME:-}" ] || err "BUCKET_NAME is not set"
-[ -n "${FEED_ID:-}"     ] || err "FEED_ID is not set"
+[ -n "${PROJ:-}"                    ] || err "PROJ is not set"
+[ -n "${BUCKET_NAME:-}"             ] || err "BUCKET_NAME is not set"
+[ -n "${FEED_ID:-}"                 ] || err "FEED_ID is not set"
+[ -n "${SCHILDKROETE_USERNAME:-}"   ] || err "SCHILDKROETE_USERNAME is not set"
+[ -n "${SCHILDKROETE_PASSWORD:-}"   ] || err "SCHILDKROETE_PASSWORD is not set"
 
 REGION=europe-west1
 IMAGE=gcr.io/${PROJ}/eink-processor
@@ -63,7 +65,7 @@ gcloud run jobs deploy eink-update \
     --memory 1Gi \
     --max-retries 1 \
     --project ${PROJ} \
-    --set-env-vars BUCKET_NAME=${BUCKET_NAME},FEED_ID=${FEED_ID}
+    --set-env-vars BUCKET_NAME=${BUCKET_NAME},FEED_ID=${FEED_ID},SCHILDKROETE_USERNAME=${SCHILDKROETE_USERNAME},SCHILDKROETE_PASSWORD=${SCHILDKROETE_PASSWORD}
 
 echo "==> Creating/updating Cloud Scheduler trigger..."
 JOB_URI="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJ}/jobs/eink-update:run"
