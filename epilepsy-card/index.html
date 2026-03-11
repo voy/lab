@@ -186,7 +186,7 @@
       const cardX = Math.round(75 * scX);
       const cardY = startY - Math.round(65 * scY);
       const cardW = W - Math.round(150 * scX);
-      const cardH = Math.round(980 * scY);
+      const cardH = Math.round(820 * scY);
       const cardR = Math.round(44 * scX);
       ctx.beginPath();
       ctx.roundRect(cardX, cardY, cardW, cardH, cardR);
@@ -196,38 +196,37 @@
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // What to do — top of card, most prominent
-      text('DO NOT RESTRAIN', startY + Math.round(20 * scY), 54, '900', '#ffffff');
-      text('PROTECT HEAD  ·  TURN ON SIDE  ·  STAY CALM', startY + Math.round(100 * scY), 36, '600', '#cccccc');
-      text(`TIME IT  ·  CALL ${emergency} IF OVER 5 MIN`, startY + Math.round(158 * scY), 36, '400', '#999999');
+      // While it's happening — instructions
+      text('PROTECT HEAD', startY + Math.round(28 * scY), 58, '900', '#ffffff');
+      text('TURN ON SIDE  ·  STAY CALM', startY + Math.round(105 * scY), 38, '600', '#cccccc');
+      text('DO NOT RESTRAIN', startY + Math.round(168 * scY), 36, '400', '#aaaaaa');
+      text(`TIME IT  ·  CALL ${emergency} IF OVER 5 MIN`, startY + Math.round(233 * scY), 34, '400', '#888888');
 
-      // Divider — 65px gap above and below (from text edges)
+      // Divider
       ctx.fillStyle = '#2a2a2a';
-      ctx.fillRect(Math.round(120 * scX), startY + Math.round(241 * scY), W - Math.round(240 * scX), 2);
+      ctx.fillRect(Math.round(120 * scX), startY + Math.round(320 * scY), W - Math.round(240 * scX), 2);
 
-      // Medical cross (left) + alert text (right) — same vertical center
-      const cy     = startY + Math.round(405 * scY);
-      const S      = Math.round(190 * scX);
+      // Identity — cross + condition
+      const cy     = startY + Math.round(444 * scY);
+      const S      = Math.round(155 * scX);
       const t      = Math.round(S / 3);
-      const crossX = Math.round(260 * scX);
-      const textX  = W / 2 + Math.round(130 * scX);
+      const crossX = Math.round(355 * scX);
+      const textX  = W / 2 + Math.round(110 * scX);
       ctx.fillStyle = '#c03535';
       ctx.fillRect(crossX - t / 2, cy - S / 2, t, S);
       ctx.fillRect(crossX - S / 2, cy - t / 2, S, t);
 
-      text('MEDICAL ALERT', cy - Math.round(70 * scY), 58, '400', '#888888', textX);
-      text('EPILEPSY',      cy + Math.round(45 * scY), 108, '900', '#cccccc', textX);
+      text('MEDICAL ALERT', cy - Math.round(55 * scY), 46, '400', '#888888', textX);
+      text('EPILEPSY',      cy + Math.round(35 * scY), 88, '900', '#cccccc', textX);
 
-      // Divider — 65px gap above and below (from text edges)
+      // Divider
       ctx.fillStyle = '#2a2a2a';
-      ctx.fillRect(Math.round(120 * scX), startY + Math.round(569 * scY), W - Math.round(240 * scX), 2);
+      ctx.fillRect(Math.round(120 * scX), startY + Math.round(567 * scY), W - Math.round(240 * scX), 2);
 
-      // Medication info
-      text(med, startY + Math.round(665 * scY), 62, '700', '#777777');
-      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + Math.round(755 * scY), 50, '400', '#555555');
-
-      // Medical ID hint — dimmed at bottom
-      text('HOLD VOLUME + POWER  →  MEDICAL ID', startY + Math.round(870 * scY), 32, '400', '#666666');
+      // Post-seizure — meds + medical ID, small and dim
+      text(med, startY + Math.round(615 * scY), 26, '600', '#555555');
+      text(`${morning}  MORNING  ·  ${evening}  EVENING`, startY + Math.round(650 * scY), 22, '400', '#444444');
+      text('HOLD VOLUME + POWER  →  MEDICAL ID', startY + Math.round(690 * scY), 28, '400', '#555555');
     }
 
     // Sync range display values
