@@ -280,9 +280,29 @@
       max-width: 100%;
       border-radius: 4px;
     }
+
+    /* ── Drop overlay ── */
+    .drop-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 17, 23, 0.85);
+      border: 2px dashed var(--accent);
+      border-radius: 8px;
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--accent);
+      pointer-events: none;
+    }
+
+    .drop-overlay.active { display: flex; }
   </style>
 </head>
 <body>
+
+<div class="drop-overlay" id="drop-overlay">Drop file to open</div>
 
 <header>
   <div class="breadcrumb">
@@ -302,7 +322,7 @@
       <span>Markdown</span>
       <span id="stats"></span>
     </div>
-    <textarea id="input" placeholder="Paste or type Markdown here…" spellcheck="false"></textarea>
+    <textarea id="input" placeholder="Paste, type, or drop a file…" spellcheck="false"></textarea>
   </div>
 
   <div class="preview-pane">
@@ -344,6 +364,55 @@
 
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) { inputEl.value = saved; update(); }
+
+  // ── Drag and drop ──
+  const dropOverlay = document.getElementById('drop-overlay');
+  let dragDepth = 0;
+
+  document.addEventListener('dragenter', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepth++;
+    dropOverlay.classList.add('active');
+  });
+
+  document.addEventListener('dragleave', () => {
+    if (--dragDepth === 0) dropOverlay.classList.remove('active');
+  });
+
+  document.addEventListener('dragover', e => e.preventDefault());
+
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    dropOverlay.classList.remove('active');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      inputEl.value = ev.target.result;
+      save();
+      update();
+    };
+    reader.readAsText(file);
+  });
+
+  // Prevent textarea from swallowing drops
+  inputEl.addEventListener('dragover', e => e.preventDefault());
+  inputEl.addEventListener('drop', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth = 0;
+    dropOverlay.classList.remove('active');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      inputEl.value = ev.target.result;
+      save();
+      update();
+    };
+    reader.readAsText(file);
+  });
 
   let debounceTimer;
   inputEl.addEventListener('input', () => {
