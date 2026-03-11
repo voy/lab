@@ -1,4 +1,6 @@
 requests
+python-dotenv
+beautifulsoup4
 astral
 pytz
 playwright

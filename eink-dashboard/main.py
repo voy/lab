@@ -1,4 +1,7 @@
 import os
+import re
+from dotenv import load_dotenv
+load_dotenv()
 import datetime
 import requests
 from zoneinfo import ZoneInfo
@@ -13,6 +16,8 @@ TIMEZONE = ZoneInfo("Europe/Berlin")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
 FEED_ID = os.getenv("FEED_ID")
 IS_CLOUD = os.getenv('CLOUD_RUN_JOB')
+SCHILDKROETE_USERNAME = os.getenv("SCHILDKROETE_USERNAME")
+SCHILDKROETE_PASSWORD = os.getenv("SCHILDKROETE_PASSWORD")
 
 SYMBOL_CZ = {
     'clearsky': 'Jasno',
@@ -57,6 +62,109 @@ def get_forecast_slot_for_date(timeseries, target_date, target_hour):
             best_diff = diff
             best = entry
     return best
+
+def login_schildkroete():
+    """Log in and return an authenticated requests.Session."""
+    login_url = "https://bestellung.schildkroete-berlin.de/login/?next=/kunden/"
+    session = requests.Session()
+    # Fetch login page to get the CSRF token
+    resp = session.get(login_url, timeout=10)
+    resp.raise_for_status()
+    from html.parser import HTMLParser
+    class CSRFParser(HTMLParser):
+        token = None
+        def handle_starttag(self, tag, attrs):
+            if tag == "input":
+                d = dict(attrs)
+                if d.get("name") == "csrfmiddlewaretoken":
+                    self.token = d.get("value")
+    parser = CSRFParser()
+    parser.feed(resp.text)
+    csrf = parser.token
+    print(f"  CSRF token: {csrf[:8]}..." if csrf else "  No CSRF token found")
+    payload = {
+        "username": SCHILDKROETE_USERNAME,
+        "password": SCHILDKROETE_PASSWORD,
+        "csrfmiddlewaretoken": csrf,
+        "next": "/kunden/",
+    }
+    resp = session.post(login_url, data=payload, timeout=10, headers={"Referer": login_url})
+    resp.raise_for_status()
+    print(f"  Login POST → {resp.url}")
+    return session
+
+
+def strip_allergens(text):
+    # "An allen Grundschulen: Rosinenbrötchen (G1, M) aus ..." → "Rosinenbrötchen"
+    text = re.sub(r'^An allen Grundschulen:\s*(.+?)(?:\s*\([A-Z].*|\s+aus\b.*|\s+vom\b.*)', r'\1', text)
+    # Remove parenthetical allergen codes like (E1, G1, M) or (S2)
+    text = re.sub(r'\s*\([A-Z][A-Z0-9]*(?:,\s*[A-Z][A-Z0-9]*)*\)', '', text)
+    return re.sub(r'  +', ' ', text).strip()
+
+
+_CZ_DAYS = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek"]
+
+def lunch_target_date(today, hour):
+    """Return (target_date, label) for the relevant lunch day."""
+    if today.weekday() < 5 and hour < 12:
+        return today, "Dnes"
+    candidate = today + datetime.timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate += datetime.timedelta(days=1)
+    diff = (candidate - today).days
+    label = "Zítra" if diff == 1 and today.weekday() < 5 else _CZ_DAYS[candidate.weekday()]
+    return candidate, label
+
+
+def parse_lunch_html(html, target_weekday):
+    """Parse the meal-plan page HTML and return {first_name: meal_or_status}."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    result = {}
+    for panel in soup.find_all("div", class_="panel-mealplan"):
+        childname = panel.find("span", class_="childname").get_text(strip=True)
+        first_name = childname.split(",")[-1].strip().lower()
+
+        rows = panel.find("table", class_="food-order").find("tbody").find_all("tr", recursive=False)
+
+        ordered_meal = None
+        day_closed = False
+        for i, row in enumerate(rows):
+            meal_cells = row.find_all("td", class_="menu-cell")
+            if not meal_cells or target_weekday >= len(meal_cells):
+                continue
+            cell = meal_cells[target_weekday]
+            if "day-closed" in cell.get("class", []):
+                day_closed = True
+                break
+            meal_text = strip_allergens(cell.get_text(" ", strip=True))
+
+            order_row = rows[i + 3] if i + 3 < len(rows) else None
+            if order_row:
+                order_cells = order_row.find_all("td", class_="order-button-cell")
+                if target_weekday < len(order_cells):
+                    form = order_cells[target_weekday].find("form")
+                    if form and form.get("data-order-status") == "1":
+                        ordered_meal = meal_text
+                        break
+
+        result[first_name] = "zavřeno" if day_closed else ordered_meal
+    return result
+
+
+def get_lunch_data(session):
+    now = datetime.datetime.now(TIMEZONE)
+    target, day_label = lunch_target_date(now.date(), now.hour)
+    year, week, _ = target.isocalendar()
+    url = f"https://bestellung.schildkroete-berlin.de/kunden/essen/{year}/{week}/"
+    print(f"  Fetching lunch data: {url} (weekday col {target.weekday()})")
+    resp = session.get(url, timeout=10)
+    resp.raise_for_status()
+    result = parse_lunch_html(resp.text, target.weekday())
+    for name, meal in result.items():
+        print(f"  {name}: {meal[:60] if meal else 'nothing ordered'}")
+    return result, day_label
+
 
 def get_data():
     print("Gathering data...")
@@ -172,11 +280,30 @@ def build_forecast_table(forecast):
     return rows_html
 
 
+def _meal_html(meal):
+    if not meal:
+        return '<span style="opacity:0.4">nic neobjednáno</span>'
+    # Wrap each comma-segment in nobr so breaks only happen after commas
+    return ", ".join(f"<nobr>{seg.strip()}</nobr>" for seg in meal.split(","))
+
+
+def build_lunch_html(lunch, day_label):
+    header = f'<span class="lunch-header">{day_label}</span>'
+    items = list(lunch.items())
+    # Collapse to one row if all kids have the same meal
+    if len(items) > 1 and len({meal for _, meal in items}) == 1:
+        name_label = " & ".join(name.capitalize() for name, _ in items)
+        return header + f'<span class="lunch-name">{name_label}</span><span class="lunch-meal">{_meal_html(items[0][1])}</span>'
+    rows = ""
+    for name, meal in items:
+        rows += f'<span class="lunch-name">{name.capitalize()}</span><span class="lunch-meal">{_meal_html(meal)}</span>'
+    return header + rows
+
+
 def create_screenshot(data):
     print("Creating screenshot (launching Chromium)...")
-    SPACIOUS = True  # set to False to revert to compact layout
     rows_html = build_forecast_table(data['forecast'])
-    table_class = "spacious" if SPACIOUS else ""
+    lunch_html = build_lunch_html(data.get('lunch', {}), data.get('lunch_label', ''))
 
     html_content = f"""
     <html>
@@ -255,30 +382,40 @@ def create_screenshot(data):
                 font-size: 12px; line-height: 1.4;
                 color: black;
             }}
-            .spacious {{ margin: 0 4px; }}
-            .spacious td {{ padding: 18px 6px; }}
-            .spacious .col-label {{ width: 100px; }}
-            .spacious .row-icon {{ width: 64px; height: 64px; }}
-            .spacious .col-icon {{ width: 72px; }}
-            .spacious .label-name {{ font-size: 15px; }}
-            .spacious .label-time {{ font-size: 14px; }}
-            .spacious .col-temp {{ font-size: 38px; padding-right: 16px; }}
-            .spacious .col-desc {{ font-size: 14px; padding-left: 4px; }}
-            .spacious .col-precip div {{ font-size: 16px; }}
-            .spacious .col-precip .icon {{ font-size: 17px; }}
-
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
-                font-size: 18px; color: black; font-weight: 600;
+                font-size: 24px; color: black; font-weight: 600;
                 white-space: nowrap;
                 display: flex; align-items: center; gap: 2px;
             }}
-            .col-precip .icon {{ font-size: 17px; line-height: 0; position: relative; top: 0.5px; }}
+            .col-precip .icon {{ font-size: 22px; line-height: 0; position: relative; top: 0.5px; }}
 
+            .lunch {{
+                display: grid;
+                grid-template-columns: max-content 1fr;
+                column-gap: 16px;
+                row-gap: 4px;
+                margin-top: auto;
+                align-items: baseline;
+            }}
+            .lunch-header {{
+                grid-column: 1 / -1;
+                font-size: 10px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 1px;
+                opacity: 0.4;
+                padding: 4px 0 4px;
+                border-bottom: 1px solid #ccc;
+            }}
+            .lunch-name {{
+                font-size: 12px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.5px;
+            }}
+            .lunch-meal {{
+                font-size: 12px; line-height: 1.35;
+            }}
             .footer {{
                 border-top: 3px solid black;
                 padding-top: 10px;
-                margin-top: auto;
             }}
             .sun-row {{
                 display: flex;
@@ -290,8 +427,8 @@ def create_screenshot(data):
                 align-items: center;
                 gap: 1px;
             }}
-            .sun-val {{ font-weight: bold; font-size: 24px; }}
-            .sun-label {{ font-size: 12px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.3px; }}
+            .sun-val {{ font-weight: bold; font-size: 26px; }}
+            .sun-label {{ font-size: 14px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.3px; }}
         </style>
     </head>
     <body>
@@ -300,9 +437,13 @@ def create_screenshot(data):
             <div class="svatek">Svátek: <span>{data['name']}</span></div>
         </div>
 
-        <table class="{table_class}">
+        <table>
             {rows_html}
         </table>
+
+        <div class="lunch">
+            {lunch_html}
+        </div>
 
         <div class="footer">
             <div class="sun-row">
@@ -340,6 +481,17 @@ def main():
     print(f"Starting. IS_CLOUD={bool(IS_CLOUD)}, BUCKET_NAME={BUCKET_NAME}")
     try:
         data = get_data()
+        if SCHILDKROETE_USERNAME and SCHILDKROETE_PASSWORD:
+            try:
+                session = login_schildkroete()
+                data['lunch'], data['lunch_label'] = get_lunch_data(session)
+            except Exception as e:
+                print(f"  Lunch data failed: {e}")
+                data['lunch'] = {}
+                data['lunch_label'] = ""
+        else:
+            data['lunch'] = {}
+            data['lunch_label'] = ""
         img = create_screenshot(data)
 
         if not IS_CLOUD:

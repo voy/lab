@@ -1,4 +1,5 @@
 .venv
+.env
 dashboard.png
 __pycache__
 *.pyc
