@@ -186,19 +186,11 @@ def get_data():
     today = now_local.date()
     tomorrow = today + datetime.timedelta(days=1)
 
-    # Build 8 candidates (today + tomorrow), keep future ones, take first 4
-    candidates = []
-    for day_offset, date in [(0, today), (1, tomorrow)]:
-        for label, hour, expires_at in slot_defs:
-            candidates.append((date, label, hour, expires_at, day_offset == 1))
-
+    # Always show all 4 slots; if today's slot has expired, show tomorrow's with a badge
     forecast = []
-    for date, label, hour, expires_at, is_tomorrow in candidates:
-        if len(forecast) == 4:
-            break
-        # Skip slots that have expired (next slot's time has arrived)
-        if date == today and now_local.hour >= expires_at:
-            continue
+    for label, hour, expires_at in slot_defs:
+        is_tomorrow = now_local.hour >= expires_at
+        date = tomorrow if is_tomorrow else today
         entry = get_forecast_slot_for_date(timeseries, date, hour)
         if entry:
             t_local = datetime.datetime.fromisoformat(entry['time'].replace('Z', '+00:00')).astimezone(TIMEZONE)
@@ -259,17 +251,14 @@ def get_data():
 
 def build_forecast_table(forecast):
     rows_html = ""
-    divider_inserted = False
     for f in forecast:
-        if f.get("tomorrow") and not divider_inserted:
-            rows_html += '<tr class="divider-row"><td colspan="5"><span>Zítra</span></td></tr>'
-            divider_inserted = True
         icon_url = f"https://raw.githubusercontent.com/metno/weathericons/main/weather/png/{f['symbol']}.png"
         precip_val = int(f["precip"]) if f.get("precip") is not None else 0
+        tomorrow_badge = '<span class="tomorrow-badge">Zítra</span>' if f.get("tomorrow") else ""
         rows_html += f"""
-        <tr>
+        <tr{'  class="is-tomorrow"' if f.get("tomorrow") else ""}>
             <td class="col-label">
-                <span class="label-name">{f['label']}</span>
+                <span class="label-name">{f['label']}{tomorrow_badge}</span>
                 <span class="label-time">{f['time']}</span>
             </td>
             <td class="col-icon"><img class="row-icon" src="{icon_url}"></td>
@@ -283,8 +272,7 @@ def build_forecast_table(forecast):
 def _meal_html(meal):
     if not meal:
         return '<span style="opacity:0.4">nic neobjednáno</span>'
-    # Wrap each comma-segment in nobr so breaks only happen after commas
-    return ", ".join(f"<nobr>{seg.strip()}</nobr>" for seg in meal.split(","))
+    return meal
 
 
 def build_lunch_html(lunch, day_label):
@@ -292,7 +280,7 @@ def build_lunch_html(lunch, day_label):
     items = list(lunch.items())
     # Collapse to one row if all kids have the same meal
     if len(items) > 1 and len({meal for _, meal in items}) == 1:
-        name_label = " & ".join(name.capitalize() for name, _ in items)
+        name_label = " &<br>".join(name.capitalize() for name, _ in items)
         return header + f'<span class="lunch-name">{name_label}</span><span class="lunch-meal">{_meal_html(items[0][1])}</span>'
     rows = ""
     for name, meal in items:
@@ -343,7 +331,7 @@ def create_screenshot(data):
             }}
             tr {{ border-bottom: 1px solid #ccc; }}
             tr:last-child {{ border-bottom: none; }}
-            td {{ padding: 10px 4px; vertical-align: middle; }}
+            td {{ padding: 17px 4px; vertical-align: middle; }}
             .col-label {{
                 width: 90px;
                 line-height: 1;
@@ -353,14 +341,17 @@ def create_screenshot(data):
                 font-size: 13px; font-weight: 700;
                 text-transform: uppercase; letter-spacing: 0.5px;
             }}
-            .divider-row td {{
-                padding: 4px 0 2px;
-                border-bottom: 1px solid #ccc;
-            }}
-            .divider-row span {{
-                font-size: 10px; font-weight: 700;
-                text-transform: uppercase; letter-spacing: 1px;
-                opacity: 0.4;
+            .tomorrow-badge {{
+                display: inline-block;
+                margin-left: 5px;
+                font-size: 8px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.5px;
+                border: 1.5px solid black;
+                border-radius: 3px;
+                padding: 1px 3px;
+                vertical-align: middle;
+                position: relative; top: -1px;
+                opacity: 0.55;
             }}
             .label-time {{
                 display: block;
@@ -379,7 +370,7 @@ def create_screenshot(data):
                 padding-right: 12px;
             }}
             .col-desc {{
-                font-size: 12px; line-height: 1.4;
+                font-size: 14px; line-height: 1.4;
                 color: black;
             }}
             .col-precip {{ vertical-align: middle; }}
@@ -400,18 +391,18 @@ def create_screenshot(data):
             }}
             .lunch-header {{
                 grid-column: 1 / -1;
-                font-size: 10px; font-weight: 700;
+                font-size: 12px; font-weight: 700;
                 text-transform: uppercase; letter-spacing: 1px;
                 opacity: 0.4;
-                padding: 4px 0 4px;
+                padding: 4px 0 6px;
                 border-bottom: 1px solid #ccc;
             }}
             .lunch-name {{
-                font-size: 12px; font-weight: 700;
+                font-size: 14px; font-weight: 700;
                 text-transform: uppercase; letter-spacing: 0.5px;
             }}
             .lunch-meal {{
-                font-size: 12px; line-height: 1.35;
+                font-size: 14px; line-height: 1.35;
             }}
             .footer {{
                 border-top: 3px solid black;
