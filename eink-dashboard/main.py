@@ -102,6 +102,49 @@ def strip_allergens(text):
     return re.sub(r'  +', ' ', text).strip()
 
 
+try:
+    from birthdays import BIRTHDAYS
+except ImportError:
+    BIRTHDAYS = []
+
+_CZ_MONTHS_GEN = [
+    "ledna", "února", "března", "dubna", "května", "června",
+    "července", "srpna", "září", "října", "listopadu", "prosince",
+]
+
+def get_upcoming_birthdays(today, n=2, birthdays_list=None):
+    if birthdays_list is None:
+        birthdays_list = BIRTHDAYS
+    result = []
+    for b in birthdays_list:
+        dob = b["dob"]
+        try:
+            next_bday = dob.replace(year=today.year)
+        except ValueError:
+            next_bday = dob.replace(year=today.year, day=28)
+        if next_bday < today:
+            try:
+                next_bday = dob.replace(year=today.year + 1)
+            except ValueError:
+                next_bday = dob.replace(year=today.year + 1, day=28)
+        days_until = (next_bday - today).days
+        age = None if b.get("year_unknown") else next_bday.year - dob.year
+        is_today = days_until == 0
+        result.append({"name": b["name"], "date": next_bday, "days_until": days_until, "age": age, "is_today": is_today})
+    result.sort(key=lambda x: x["days_until"])
+    return result[:n]
+
+def _czech_age(years):
+    if years == 1: return "1 rok"
+    if 2 <= years <= 4: return f"{years} roky"
+    return f"{years} let"  # 5, 12, 23, 40 … all take "let"
+
+def _czech_days(days):
+    if days == 0: return "dnes!"
+    if days == 1: return "zítra"
+    if 2 <= days <= 4: return f"za {days} dny"
+    return f"za {days} dní"
+
 _CZ_DAYS = ["Pondělí", "Úterý", "Středa", "Čtvrtek", "Pátek"]
 
 def lunch_target_date(today, hour):
@@ -197,7 +240,8 @@ def get_data():
             temp = round(entry['data']['instant']['details']['air_temperature'])
             summary = entry['data'].get('next_1_hours') or entry['data'].get('next_6_hours') or {}
             symbol = summary.get('summary', {}).get('symbol_code', 'cloudy')
-            precip = summary.get('details', {}).get('probability_of_precipitation') or 0
+            precip_block = entry['data'].get('next_1_hours') or entry['data'].get('next_6_hours') or {}
+            precip = precip_block.get('details', {}).get('precipitation_amount') or 0
             forecast.append({"label": label, "time": t_local.strftime("%H:%M"), "temp": temp, "symbol": symbol, "desc": symbol_to_cz(symbol), "precip": precip, "tomorrow": is_tomorrow})
             print(f"  {'[zítra] ' if is_tomorrow else ''}{label}: {temp}°C, {symbol}, {precip}% precip")
 
@@ -238,6 +282,8 @@ def get_data():
     diff_m = round(diff_secs / 60)
     diff_str = f"+{diff_m}m" if diff_m >= 0 else f"{diff_m}m"
 
+    birthdays = get_upcoming_birthdays(today, n=3)
+
     return {
         "forecast": forecast,
         "name": name_day,
@@ -246,17 +292,37 @@ def get_data():
         "sunset": sunset,
         "daylight": f"{total_h}h {total_m}m ({diff_str})",
         "date": date_str,
+        "birthdays": birthdays,
     }
+
+
+def build_birthday_html(birthdays):
+    items = ""
+    for b in birthdays:
+        date_str = f"{b['date'].day}. {_CZ_MONTHS_GEN[b['date'].month - 1]}"
+        age_html = f'<span class="bday-age">{_czech_age(b["age"])}</span>' if b["age"] is not None else '<span class="bday-age"></span>'
+        is_today = b.get("is_today")
+        today_class = " bday-today" if is_today else ""
+        icon = "celebration" if is_today else "cake"
+        items += f"""
+        <div class="bday-item{today_class}">
+            <span class="icon bday-icon">{icon}</span>
+            <span class="bday-name">{b['name']}</span>
+            <span class="bday-date">{date_str}</span>
+            {age_html}
+            <span class="bday-days">{_czech_days(b['days_until'])}</span>
+        </div>"""
+    return items
 
 
 def build_forecast_table(forecast):
     rows_html = ""
     for f in forecast:
         icon_url = f"https://raw.githubusercontent.com/metno/weathericons/main/weather/png/{f['symbol']}.png"
-        precip_val = int(f["precip"]) if f.get("precip") is not None else 0
+        precip_val = f["precip"] if f.get("precip") else 0
         tomorrow_badge = '<span class="tomorrow-badge">Zítra</span>' if f.get("tomorrow") else ""
         rows_html += f"""
-        <tr{'  class="is-tomorrow"' if f.get("tomorrow") else ""}>
+        <tr>
             <td class="col-label">
                 <span class="label-name">{f['label']}{tomorrow_badge}</span>
                 <span class="label-time">{f['time']}</span>
@@ -264,7 +330,7 @@ def build_forecast_table(forecast):
             <td class="col-icon"><img class="row-icon" src="{icon_url}"></td>
             <td class="col-temp">{f['temp']}°</td>
             <td class="col-desc">{f['desc']}</td>
-            <td class="col-precip"><div><span class="icon">water_drop</span>{precip_val}%</div></td>
+            <td class="col-precip"><div><span class="icon">water_drop</span>{precip_val} <span class="precip-unit">mm</span></div></td>
         </tr>"""
     return rows_html
 
@@ -272,7 +338,7 @@ def build_forecast_table(forecast):
 def _meal_html(meal):
     if not meal:
         return '<span style="opacity:0.4">nic neobjednáno</span>'
-    return meal
+    return ", ".join(f"<nobr>{p.strip()}</nobr>" for p in meal.split(","))
 
 
 def build_lunch_html(lunch, day_label):
@@ -281,17 +347,20 @@ def build_lunch_html(lunch, day_label):
     # Collapse to one row if all kids have the same meal
     if len(items) > 1 and len({meal for _, meal in items}) == 1:
         name_label = " &<br>".join(name.capitalize() for name, _ in items)
-        return header + f'<span class="lunch-name">{name_label}</span><span class="lunch-meal">{_meal_html(items[0][1])}</span>'
+        return header + f'<span class="lunch-name">{name_label}</span><span class="lunch-meal">{_meal_html(items[0][1])}</span>', False
     rows = ""
     for name, meal in items:
         rows += f'<span class="lunch-name">{name.capitalize()}</span><span class="lunch-meal">{_meal_html(meal)}</span>'
-    return header + rows
+    is_split = len(items) > 1
+    return header + rows, is_split
 
 
 def create_screenshot(data):
     print("Creating screenshot (launching Chromium)...")
     rows_html = build_forecast_table(data['forecast'])
-    lunch_html = build_lunch_html(data.get('lunch', {}), data.get('lunch_label', ''))
+    birthday_html = build_birthday_html(data.get('birthdays', []))
+    lunch_html, lunch_split = build_lunch_html(data.get('lunch', {}), data.get('lunch_label', ''))
+    lunch_class = "lunch lunch-split" if lunch_split else "lunch"
 
     html_content = f"""
     <html>
@@ -330,7 +399,6 @@ def create_screenshot(data):
                 border-collapse: collapse;
             }}
             tr {{ border-bottom: 1px solid #ccc; }}
-            tr:last-child {{ border-bottom: none; }}
             td {{ padding: 17px 4px; vertical-align: middle; }}
             .col-label {{
                 width: 90px;
@@ -375,18 +443,37 @@ def create_screenshot(data):
             }}
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
-                font-size: 24px; color: black; font-weight: 600;
+                font-size: 22px; color: black; font-weight: 400;
                 white-space: nowrap;
                 display: flex; align-items: center; gap: 2px;
             }}
+            .precip-unit {{ font-size: 14px; opacity: 0.5; align-self: flex-end; margin-bottom: 2px; }}
             .col-precip .icon {{ font-size: 22px; line-height: 0; position: relative; top: 0.5px; }}
+
+            .birthdays {{
+                margin-top: auto;
+                margin-bottom: auto;
+            }}
+            .bday-item {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 5px 0;
+                font-size: 15px;
+            }}
+            .bday-icon {{ font-size: 20px; opacity: 0.75; width: 28px; text-align: center; flex-shrink: 0; }}
+            .bday-today .bday-icon {{ font-size: 24px; opacity: 1; }}
+            .bday-name {{ font-weight: 700; width: 105px; }}
+            .bday-date {{ flex: 1; }}
+            .bday-age {{ font-weight: 600; width: 60px; text-align: right; }}
+            .bday-days {{ opacity: 0.5; font-size: 13px; width: 75px; text-align: right; }}
+            .bday-today {{ background: black; color: white; border-radius: 8px; margin: 0 -6px; padding: 5px 6px; }}
 
             .lunch {{
                 display: grid;
                 grid-template-columns: max-content 1fr;
                 column-gap: 16px;
                 row-gap: 4px;
-                margin-top: auto;
                 align-items: baseline;
             }}
             .lunch-header {{
@@ -404,6 +491,8 @@ def create_screenshot(data):
             .lunch-meal {{
                 font-size: 14px; line-height: 1.35;
             }}
+            .lunch-split .lunch-name {{ font-size: 12px; }}
+            .lunch-split .lunch-meal {{ font-size: 12px; }}
             .footer {{
                 border-top: 3px solid black;
                 padding-top: 10px;
@@ -432,7 +521,11 @@ def create_screenshot(data):
             {rows_html}
         </table>
 
-        <div class="lunch">
+        <div class="birthdays">
+            {birthday_html}
+        </div>
+
+        <div class="{lunch_class}">
             {lunch_html}
         </div>
 
