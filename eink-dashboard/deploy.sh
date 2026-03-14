@@ -65,7 +65,7 @@ gcloud run jobs deploy eink-update \
     --memory 1Gi \
     --max-retries 1 \
     --project ${PROJ} \
-    --set-env-vars BUCKET_NAME=${BUCKET_NAME},FEED_ID=${FEED_ID},SCHILDKROETE_USERNAME=${SCHILDKROETE_USERNAME},SCHILDKROETE_PASSWORD=${SCHILDKROETE_PASSWORD}
+    --set-env-vars BUCKET_NAME=${BUCKET_NAME},FEED_ID=${FEED_ID},SCHILDKROETE_USERNAME=${SCHILDKROETE_USERNAME},SCHILDKROETE_PASSWORD=${SCHILDKROETE_PASSWORD},BIRTHDAYS_GIST_URL=${BIRTHDAYS_GIST_URL}
 
 echo "==> Creating/updating Cloud Scheduler trigger..."
 JOB_URI="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJ}/jobs/eink-update:run"

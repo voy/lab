@@ -27,7 +27,7 @@ gcloud run jobs update eink-update \
     --image ${IMAGE} \
     --region ${REGION} \
     --project ${PROJ} \
-    --set-env-vars BUCKET_NAME=${BUCKET_NAME},FEED_ID=${FEED_ID},SCHILDKROETE_USERNAME=${SCHILDKROETE_USERNAME},SCHILDKROETE_PASSWORD=${SCHILDKROETE_PASSWORD}
+    --set-env-vars BUCKET_NAME=${BUCKET_NAME},FEED_ID=${FEED_ID},SCHILDKROETE_USERNAME=${SCHILDKROETE_USERNAME},SCHILDKROETE_PASSWORD=${SCHILDKROETE_PASSWORD},BIRTHDAYS_GIST_URL=${BIRTHDAYS_GIST_URL}
 
 echo "==> Triggering job (streaming logs)..."
 gcloud run jobs execute eink-update \
