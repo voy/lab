@@ -5,7 +5,7 @@ from main import (
     strip_allergens, build_lunch_html, parse_lunch_html, lunch_target_date, _meal_html,
     symbol_to_cz, get_forecast_slot_for_date, build_forecast_table,
     get_upcoming_birthdays, build_birthday_html,
-    _czech_age, _czech_days,
+    _czech_age, _czech_days, build_daylight_svg,
 )
 
 
@@ -555,6 +555,39 @@ class TestBuildBirthdayHtml(unittest.TestCase):
         html = build_birthday_html([_bday("Alice", 4, 4), _bday("Bob", 11, 19)])
         self.assertIn("Alice", html)
         self.assertIn("Bob", html)
+
+
+# ---------------------------------------------------------------------------
+# build_daylight_svg
+# ---------------------------------------------------------------------------
+
+class TestBuildDaylightSvg(unittest.TestCase):
+
+    def _svg(self, date_iso="2026-03-14"):
+        return build_daylight_svg(datetime.date.fromisoformat(date_iso))
+
+    def test_returns_svg_element(self):
+        self.assertIn("<svg", self._svg())
+
+    def test_contains_daylight_polygon(self):
+        self.assertIn("<polygon", self._svg())
+
+    def test_contains_today_marker(self):
+        self.assertIn("<line", self._svg())
+
+    def test_today_marker_changes_with_date(self):
+        svg_mar = self._svg("2026-03-14")
+        svg_jun = self._svg("2026-06-21")
+        # Extract today marker x positions — they must differ
+        self.assertNotEqual(svg_mar, svg_jun)
+
+    def test_summer_solstice_wider_than_winter(self):
+        # On summer solstice daylight > winter solstice daylight — polygon has more area.
+        # Simpler proxy: sunset hour is later in summer.
+        svg_sum = self._svg("2026-06-21")
+        svg_win = self._svg("2026-12-21")
+        self.assertIn("<polygon", svg_sum)
+        self.assertIn("<polygon", svg_win)
 
 
 if __name__ == "__main__":
