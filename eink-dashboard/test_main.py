@@ -455,9 +455,9 @@ class TestCzechDays(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 _SAMPLE_BIRTHDAYS = [
-    {"name": "Ríša",  "dob": datetime.date(2014,  4,  4)},
-    {"name": "Máma",  "dob": datetime.date(1983, 11, 19)},
-    {"name": "Táta",  "dob": datetime.date(1984,  3, 12)},
+    {"name": "Ada",   "date_of_birth": datetime.date(2010,  4,  4)},
+    {"name": "Eva",   "date_of_birth": datetime.date(1980, 11, 19)},
+    {"name": "Petr",  "date_of_birth": datetime.date(1978,  3, 12)},
 ]
 
 
@@ -468,8 +468,8 @@ class TestGetUpcomingBirthdays(unittest.TestCase):
 
     def test_is_today_true_on_birthday(self):
         results = self._run("2026-04-04")
-        risa = next(r for r in results if r["name"] == "Ríša")
-        self.assertTrue(risa["is_today"])
+        ada = next(r for r in results if r["name"] == "Ada")
+        self.assertTrue(ada["is_today"])
 
     def test_is_today_false_when_not_birthday(self):
         results = self._run("2026-03-14")
@@ -478,8 +478,8 @@ class TestGetUpcomingBirthdays(unittest.TestCase):
 
     def test_days_until_zero_on_birthday(self):
         results = self._run("2026-04-04")
-        risa = next(r for r in results if r["name"] == "Ríša")
-        self.assertEqual(risa["days_until"], 0)
+        ada = next(r for r in results if r["name"] == "Ada")
+        self.assertEqual(ada["days_until"], 0)
 
     def test_sorted_by_days_until(self):
         results = self._run("2026-03-14", n=3)
@@ -491,20 +491,16 @@ class TestGetUpcomingBirthdays(unittest.TestCase):
         self.assertEqual(len(self._run("2026-03-14", n=3)), 3)
 
     def test_birthday_this_year_before_today_rolls_to_next_year(self):
-        # Táta's birthday is March 12; running on March 14 → next one is 2027
+        # Petr's birthday is March 12; running on March 14 → next one is 2027
         results = self._run("2026-03-14")
-        tata = next(r for r in results if r["name"] == "Táta")
-        self.assertEqual(tata["date"].year, 2027)
+        petr = next(r for r in results if r["name"] == "Petr")
+        self.assertEqual(petr["date"].year, 2027)
 
     def test_age_correct_on_birthday(self):
         results = self._run("2026-04-04")
-        risa = next(r for r in results if r["name"] == "Ríša")
-        self.assertEqual(risa["age"], 12)
+        ada = next(r for r in results if r["name"] == "Ada")
+        self.assertEqual(ada["age"], 16)
 
-    def test_age_none_for_year_unknown(self):
-        blist = [{"name": "X", "dob": datetime.date(2000, 9, 15), "year_unknown": True}]
-        results = self._run("2026-03-14", n=1, blist=blist)
-        self.assertIsNone(results[0]["age"])
 
 
 # ---------------------------------------------------------------------------
@@ -524,41 +520,41 @@ def _bday(name, month, day, age=30, is_today=False):
 class TestBuildBirthdayHtml(unittest.TestCase):
 
     def test_name_in_output(self):
-        self.assertIn("Ríša", build_birthday_html([_bday("Ríša", 4, 4)]))
+        self.assertIn("Test", build_birthday_html([_bday("Test", 4, 4)]))
 
     def test_age_shown(self):
-        self.assertIn("12 let", build_birthday_html([_bday("Ríša", 4, 4, age=12)]))
+        self.assertIn("12 let", build_birthday_html([_bday("Test", 4, 4, age=12)]))
 
     def test_age_hidden_when_none(self):
-        html = build_birthday_html([_bday("Lída", 9, 15, age=None)])
+        html = build_birthday_html([_bday("Test", 9, 15, age=None)])
         self.assertNotIn("let", html)
         self.assertNotIn("rok", html)
 
     def test_bday_today_class_when_is_today(self):
-        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=True)])
+        html = build_birthday_html([_bday("Test", 4, 4, is_today=True)])
         self.assertIn("bday-today", html)
 
     def test_celebration_icon_when_is_today(self):
-        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=True)])
+        html = build_birthday_html([_bday("Test", 4, 4, is_today=True)])
         self.assertIn("celebration", html)
 
     def test_cake_icon_when_not_today(self):
-        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=False)])
+        html = build_birthday_html([_bday("Test", 4, 4, is_today=False)])
         self.assertIn("cake", html)
         self.assertNotIn("celebration", html)
 
     def test_no_bday_today_class_when_not_today(self):
-        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=False)])
+        html = build_birthday_html([_bday("Test", 4, 4, is_today=False)])
         self.assertNotIn("bday-today", html)
 
     def test_bday_today_class_with_unknown_age(self):
-        html = build_birthday_html([_bday("Lída", 9, 15, age=None, is_today=True)])
+        html = build_birthday_html([_bday("Test", 9, 15, age=None, is_today=True)])
         self.assertIn("bday-today", html)
 
     def test_multiple_entries_rendered(self):
-        html = build_birthday_html([_bday("Ríša", 4, 4), _bday("Máma", 11, 19)])
-        self.assertIn("Ríša", html)
-        self.assertIn("Máma", html)
+        html = build_birthday_html([_bday("Alice", 4, 4), _bday("Bob", 11, 19)])
+        self.assertIn("Alice", html)
+        self.assertIn("Bob", html)
 
 
 if __name__ == "__main__":

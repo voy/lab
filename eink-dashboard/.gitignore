@@ -1,6 +1,7 @@
 .env
 .venv
 birthdays.py
+birthdays.json
 __pycache__
 *.pyc
 dashboard.png
