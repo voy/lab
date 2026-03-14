@@ -11,6 +11,10 @@ Generates a 480×800px greyscale PNG for an e-ink display, updated hourly via Go
 - Each slot: weather icon, temperature, Czech description, precipitation %
 - Always shows the *next* occurrence — if 12:00 has passed, shows tomorrow's
 
+**Birthdays** — next 3 upcoming birthdays with date, age, and days until. Today's birthday gets a special highlight. Data loaded from a secret gist (see below).
+
+**Lunch** — today's or next school day's meal from [Schildkröte](https://bestellung.schildkroete-berlin.de), scraped after login.
+
 **Footer** — sunrise, day length (with ±diff vs yesterday), sunset
 
 ## Architecture
@@ -62,6 +66,16 @@ FEED_ID=your-uuid   # generate with: python3 -c "import uuid; print(uuid.uuid4()
 ```
 
 `.env` is gitignored and never committed.
+
+### Birthdays
+
+Birthday data is stored in a **secret GitHub Gist** as `birthdays.json` (see `birthdays.json.example` for the format). Add the raw gist URL to `.env`:
+
+```bash
+BIRTHDAYS_GIST_URL=https://gist.githubusercontent.com/you/abc123/raw/birthdays.json
+```
+
+Use the versionless `/raw/<filename>` URL (no commit hash) so updates to the gist are picked up automatically. The script fetches the gist at startup; if the URL is absent, the birthday section is simply empty.
 
 ### First deploy
 

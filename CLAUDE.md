@@ -18,6 +18,17 @@ A monorepo of small tools, experiments, and interactive demos.
 1. Rename the directory.
 2. Update the href, title, and any references in `index.html`.
 
+## Committing and pushing
+
+When the user says "commit" while working in a specific project subdirectory, stage and commit **only the files in that directory**. Use a single-line commit message prefixed with the project directory name:
+
+```
+eink-dashboard: add birthday section with today highlight and tests
+markdown-viewer: fix drag-and-drop on Firefox
+```
+
+Before pushing, scan the staged diff for anything that looks like private data — real names, birth dates, credentials, personal identifiers, private URLs. If anything looks sensitive, **stop, flag it clearly, and ask to confirm** before running `git push`.
+
 ## Conventions
 
 - **Web projects: vanilla JavaScript by default.** No framework unless the user asks (or the project already uses one, e.g. `scales/` uses React).
