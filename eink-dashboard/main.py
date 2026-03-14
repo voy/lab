@@ -289,15 +289,8 @@ def get_data():
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
     s = sun(city.observer, date=today, tzinfo=TIMEZONE)
-    s_yesterday = sun(city.observer, date=yesterday, tzinfo=TIMEZONE)
-    sunrise = s['sunrise'].strftime("%H:%M")
-    sunset = s['sunset'].strftime("%H:%M")
-    total_secs = int((s['sunset'] - s['sunrise']).total_seconds())
-    total_h, total_rem = divmod(total_secs, 3600)
-    total_m = total_rem // 60
-    diff_secs = total_secs - int((s_yesterday['sunset'] - s_yesterday['sunrise']).total_seconds())
-    diff_m = round(diff_secs / 60)
-    diff_str = f"+{diff_m}m" if diff_m >= 0 else f"{diff_m}m"
+    dawn_str = s['dawn'].strftime("%H:%M")
+    dusk_str = s['dusk'].strftime("%H:%M")
 
     birthdays = get_upcoming_birthdays(today, n=3)
 
@@ -305,12 +298,80 @@ def get_data():
         "forecast": forecast,
         "name": name_day,
         "day_of_week": day_of_week,
-        "sunrise": sunrise,
-        "sunset": sunset,
-        "daylight": f"{total_h}h {total_m}m ({diff_str})",
+        "dawn": dawn_str,
+        "dusk": dusk_str,
         "date": date_str,
         "birthdays": birthdays,
     }
+
+
+def build_daylight_svg(today):
+    year = today.year
+    city = LocationInfo("Berlin", "DE", "Europe/Berlin", LAT, LON)
+    days = []
+    d = datetime.date(year, 1, 1)
+    while d.year == year:
+        s = sun(city.observer, date=d, tzinfo=TIMEZONE)
+        days.append((
+            s['sunrise'].hour + s['sunrise'].minute / 60,
+            s['sunset'].hour + s['sunset'].minute / 60,
+        ))
+        d += datetime.timedelta(days=1)
+    n = len(days)
+    W, H = 220, 50
+    HOUR_MIN, HOUR_MAX = 3, 22
+
+    def xp(i): return round(i / (n - 1) * W, 1)
+    def yp(h): return round(H - (h - HOUR_MIN) / (HOUR_MAX - HOUR_MIN) * H, 1)
+
+    def build_curve(values, reverse=False):
+        idxs = range(n - 1, -1, -1) if reverse else range(n)
+        pts = []
+        prev_i = None
+        for i in idxs:
+            if prev_i is not None and abs(values[i] - values[prev_i]) > 0.5:
+                # DST jump — insert vertical step at this x before the new value
+                pts.append((xp(i), yp(values[prev_i])))
+            pts.append((xp(i), yp(values[i])))
+            prev_i = i
+        return pts
+
+    sunrises = [days[i][0] for i in range(n)]
+    sunsets  = [days[i][1] for i in range(n)]
+    pts = build_curve(sunrises) + build_curve(sunsets, reverse=True)
+    poly = " ".join(f"{x},{y}" for x, y in pts)
+
+    durations = [days[i][1] - days[i][0] for i in range(n)]
+    summer_i = durations.index(max(durations))
+    winter_i = durations.index(min(durations))
+
+    def triangle(cx, tip_y, size, point_up):
+        # point_up=True → tip points up (summer peak), False → tip points down (winter trough)
+        half = size / 2
+        if point_up:
+            return f"{cx},{tip_y} {cx - half},{tip_y + size} {cx + half},{tip_y + size}"
+        else:
+            return f"{cx},{tip_y} {cx - half},{tip_y - size} {cx + half},{tip_y - size}"
+
+    s_size = 5
+    summer_x = xp(summer_i)
+    summer_tip = yp(days[summer_i][1]) - 2
+    winter_x = xp(winter_i)
+    winter_tip = yp(days[winter_i][0]) + 2
+
+    today_i = (today - datetime.date(year, 1, 1)).days
+    today_x = xp(today_i)
+    today_y1 = yp(days[today_i][1])
+    today_y2 = yp(days[today_i][0])
+
+    return (
+        f'<svg width="{W}" height="{H}" xmlns="http://www.w3.org/2000/svg" style="display:block">'
+        f'<polygon points="{poly}" fill="#bbb"/>'
+        f'<polygon points="{triangle(summer_x, summer_tip, s_size, True)}" fill="black" opacity="0.5"/>'
+        f'<polygon points="{triangle(winter_x, winter_tip, s_size, False)}" fill="black" opacity="0.5"/>'
+        f'<line x1="{today_x}" y1="{today_y1}" x2="{today_x}" y2="{today_y2}" stroke="black" stroke-width="1.5"/>'
+        f'</svg>'
+    )
 
 
 def build_birthday_html(birthdays):
@@ -379,6 +440,7 @@ def create_screenshot(data):
     rows_html = build_forecast_table(data['forecast'])
     birthday_html = build_birthday_html(data.get('birthdays', []))
     lunch_html, lunch_split = build_lunch_html(data.get('lunch', {}), data.get('lunch_label', ''))
+    daylight_svg = build_daylight_svg(datetime.date.today())
     lunch_class = "lunch lunch-split" if lunch_split else "lunch"
 
     html_content = f"""
@@ -531,6 +593,7 @@ def create_screenshot(data):
             }}
             .sun-val {{ font-weight: bold; font-size: 26px; }}
             .sun-label {{ font-size: 14px; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.3px; }}
+            .sun-graph {{ flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 10px; }}
         </style>
     </head>
     <body>
@@ -554,16 +617,15 @@ def create_screenshot(data):
         <div class="footer">
             <div class="sun-row">
                 <div class="sun-item">
-                    <span class="sun-val">{data['sunrise']}</span>
-                    <span class="sun-label">východ</span>
+                    <span class="sun-val">{data['dawn']}</span>
+                    <span class="sun-label">svítání</span>
+                </div>
+                <div class="sun-graph">
+                    {daylight_svg}
                 </div>
                 <div class="sun-item">
-                    <span class="sun-val">{data['daylight']}</span>
-                    <span class="sun-label">délka dne</span>
-                </div>
-                <div class="sun-item">
-                    <span class="sun-val">{data['sunset']}</span>
-                    <span class="sun-label">západ</span>
+                    <span class="sun-val">{data['dusk']}</span>
+                    <span class="sun-label">soumrak</span>
                 </div>
             </div>
         </div>

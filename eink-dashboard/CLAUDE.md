@@ -20,6 +20,7 @@ Uses `uv pip install <pkg>` to add packages (no pyproject.toml, uses requirement
 
 - `BUCKET_NAME`, `FEED_ID` — GCS upload target
 - `SCHILDKROETE_USERNAME`, `SCHILDKROETE_PASSWORD` — login for lunch scraping
+- `BIRTHDAYS_GIST_URL` — raw URL to private gist with birthday data
 
 ## Visual changes
 
