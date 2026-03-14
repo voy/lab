@@ -316,7 +316,8 @@ def get_data():
 def build_birthday_html(birthdays):
     items = ""
     for b in birthdays:
-        date_str = f"{b['date'].day}. {_CZ_MONTHS_GEN[b['date'].month - 1]}"
+        day_str = f"{b['date'].day}."
+        month_str = _CZ_MONTHS_GEN[b['date'].month - 1]
         age_html = f'<span class="bday-age">{_czech_age(b["age"])}</span>' if b["age"] is not None else '<span class="bday-age"></span>'
         is_today = b.get("is_today")
         today_class = " bday-today" if is_today else ""
@@ -325,7 +326,7 @@ def build_birthday_html(birthdays):
         <div class="bday-item{today_class}">
             <span class="icon bday-icon">{icon}</span>
             <span class="bday-name">{b['name']}</span>
-            <span class="bday-date">{date_str}</span>
+            <span class="bday-date"><span class="bday-day">{day_str}</span><span class="bday-month">{month_str}</span></span>
             {age_html}
             <span class="bday-days">{_czech_days(b['days_until'])}</span>
         </div>"""
@@ -341,7 +342,8 @@ def build_forecast_table(forecast):
         rows_html += f"""
         <tr>
             <td class="col-label">
-                <span class="label-name">{f['label']}{tomorrow_badge}</span>
+                {tomorrow_badge}
+                <span class="label-name">{f['label']}</span>
                 <span class="label-time">{f['time']}</span>
             </td>
             <td class="col-icon"><img class="row-icon" src="{icon_url}"></td>
@@ -430,7 +432,7 @@ def create_screenshot(data):
             }}
             .tomorrow-badge {{
                 display: inline-block;
-                margin-left: 5px;
+                margin-bottom: 4px;
                 font-size: 8px; font-weight: 700;
                 text-transform: uppercase; letter-spacing: 0.5px;
                 border: 1.5px solid black;
@@ -481,6 +483,8 @@ def create_screenshot(data):
             .bday-today .bday-icon {{ font-size: 24px; opacity: 1; }}
             .bday-name {{ font-weight: 700; width: 105px; }}
             .bday-date {{ flex: 1; }}
+            .bday-day {{ display: inline-block; width: 26px; text-align: right; }}
+            .bday-month {{ padding-left: 3px; }}
             .bday-age {{ font-weight: 600; width: 60px; text-align: right; }}
             .bday-days {{ opacity: 0.5; font-size: 13px; width: 75px; text-align: right; }}
             .bday-today {{ background: black; color: white; border-radius: 8px; margin: 0 -6px; padding: 5px 6px; }}
