@@ -4,6 +4,8 @@ import unittest
 from main import (
     strip_allergens, build_lunch_html, parse_lunch_html, lunch_target_date, _meal_html,
     symbol_to_cz, get_forecast_slot_for_date, build_forecast_table,
+    get_upcoming_birthdays, build_birthday_html,
+    _czech_age, _czech_days,
 )
 
 
@@ -224,14 +226,14 @@ class TestParseLunchHtml(unittest.TestCase):
 class TestBuildLunchHtml(unittest.TestCase):
 
     def test_two_different_meals_show_both_names(self):
-        html = build_lunch_html({"max": "Pasta", "moritz": "Suppe"}, "Zítra")
+        html, _ = build_lunch_html({"max": "Pasta", "moritz": "Suppe"}, "Zítra")
         self.assertIn("Max", html)
         self.assertIn("Moritz", html)
         self.assertIn("Pasta", html)
         self.assertIn("Suppe", html)
 
     def test_same_meal_collapsed_to_one_row(self):
-        html = build_lunch_html({"max": "Pasta", "moritz": "Pasta"}, "Dnes")
+        html, _ = build_lunch_html({"max": "Pasta", "moritz": "Pasta"}, "Dnes")
         # Only one occurrence of the meal text
         self.assertEqual(html.count("Pasta"), 1)
         # Both names joined
@@ -239,24 +241,24 @@ class TestBuildLunchHtml(unittest.TestCase):
         self.assertIn("Moritz", html)
 
     def test_none_shows_nic_neobjednano(self):
-        html = build_lunch_html({"max": None}, "Dnes")
+        html, _ = build_lunch_html({"max": None}, "Dnes")
         self.assertIn("nic neobjednáno", html)
 
     def test_zavreno_shown_as_is(self):
-        html = build_lunch_html({"max": "zavřeno"}, "Dnes")
+        html, _ = build_lunch_html({"max": "zavřeno"}, "Dnes")
         self.assertIn("zavřeno", html)
 
     def test_single_child(self):
-        html = build_lunch_html({"max": "Pasta"}, "Zítra")
+        html, _ = build_lunch_html({"max": "Pasta"}, "Zítra")
         self.assertIn("Max", html)
         self.assertNotIn("Moritz", html)
 
     def test_label_shown_in_html(self):
-        html = build_lunch_html({"max": "Pasta"}, "Zítra")
+        html, _ = build_lunch_html({"max": "Pasta"}, "Zítra")
         self.assertIn("Zítra", html)
 
     def test_label_shown_for_day_name(self):
-        html = build_lunch_html({"max": "Pasta"}, "Pondělí")
+        html, _ = build_lunch_html({"max": "Pasta"}, "Pondělí")
         self.assertIn("Pondělí", html)
 
     def test_meal_html_wraps_only_after_comma(self):
@@ -268,8 +270,20 @@ class TestBuildLunchHtml(unittest.TestCase):
         self.assertIn("</nobr>, <nobr>", html)
 
     def test_both_none_collapsed(self):
-        html = build_lunch_html({"max": None, "moritz": None}, "Dnes")
+        html, _ = build_lunch_html({"max": None, "moritz": None}, "Dnes")
         self.assertEqual(html.count("nic neobjednáno"), 1)
+
+    def test_returns_is_split_false_when_same_meal(self):
+        _, is_split = build_lunch_html({"max": "Pasta", "moritz": "Pasta"}, "Dnes")
+        self.assertFalse(is_split)
+
+    def test_returns_is_split_true_when_different_meals(self):
+        _, is_split = build_lunch_html({"max": "Pasta", "moritz": "Suppe"}, "Dnes")
+        self.assertTrue(is_split)
+
+    def test_returns_is_split_false_for_single_child(self):
+        _, is_split = build_lunch_html({"max": "Pasta"}, "Dnes")
+        self.assertFalse(is_split)
 
 
 # ---------------------------------------------------------------------------
@@ -368,27 +382,183 @@ class TestBuildForecastTable(unittest.TestCase):
 
     def test_renders_precipitation(self):
         html = build_forecast_table([_forecast_entry("Ráno", 10, precip=40)])
-        self.assertIn("40%", html)
+        self.assertIn("40", html)
+        self.assertIn("mm", html)
 
-    def test_zitra_divider_inserted_before_first_tomorrow(self):
+    def test_chronological_order_preserved(self):
+        # At 17:22: Ráno+Pol. are tomorrow, Odpo.+Večer are today — order must stay as-is
         entries = [
-            _forecast_entry("Odpo.", 10, tomorrow=False),
-            _forecast_entry("Ráno", 6, tomorrow=True),
-            _forecast_entry("Pol.", 9, tomorrow=True),
+            _forecast_entry("Ráno",   4, tomorrow=True),
+            _forecast_entry("Pol.",  12, tomorrow=True),
+            _forecast_entry("Odpo.", 11, tomorrow=False),
+            _forecast_entry("Večer",  7, tomorrow=False),
         ]
         html = build_forecast_table(entries)
-        self.assertIn("divider-row", html)
-        self.assertIn("Zítra", html)
-        # Divider appears only once
-        self.assertEqual(html.count("divider-row"), 1)
+        self.assertLess(html.index("Ráno"),  html.index("Pol."))
+        self.assertLess(html.index("Pol."),  html.index("Odpo."))
+        self.assertLess(html.index("Odpo."), html.index("Večer"))
 
-    def test_no_divider_without_tomorrow_entries(self):
-        html = build_forecast_table([_forecast_entry("Ráno", 10), _forecast_entry("Pol.", 12)])
-        self.assertNotIn("divider-row", html)
+    def test_tomorrow_badge_shown_for_tomorrow_slot(self):
+        html = build_forecast_table([_forecast_entry("Ráno", 4, tomorrow=True)])
+        self.assertIn("tomorrow-badge", html)
+        self.assertIn("Zítra", html)
+
+    def test_no_tomorrow_badge_for_today_slot(self):
+        html = build_forecast_table([_forecast_entry("Odpo.", 11, tomorrow=False)])
+        self.assertNotIn("tomorrow-badge", html)
 
     def test_icon_url_uses_symbol(self):
         html = build_forecast_table([_forecast_entry("Ráno", 10, symbol="clearsky_day")])
         self.assertIn("clearsky_day.png", html)
+
+
+# ---------------------------------------------------------------------------
+# _czech_age / _czech_days
+# ---------------------------------------------------------------------------
+
+class TestCzechAge(unittest.TestCase):
+
+    def test_1_rok(self):
+        self.assertEqual(_czech_age(1), "1 rok")
+
+    def test_2_4_roky(self):
+        self.assertEqual(_czech_age(2), "2 roky")
+        self.assertEqual(_czech_age(4), "4 roky")
+
+    def test_5_plus_let(self):
+        self.assertEqual(_czech_age(5), "5 let")
+        self.assertEqual(_czech_age(12), "12 let")
+        self.assertEqual(_czech_age(23), "23 let")
+        self.assertEqual(_czech_age(40), "40 let")
+        self.assertEqual(_czech_age(96), "96 let")
+
+
+class TestCzechDays(unittest.TestCase):
+
+    def test_today(self):
+        self.assertEqual(_czech_days(0), "dnes!")
+
+    def test_tomorrow(self):
+        self.assertEqual(_czech_days(1), "zítra")
+
+    def test_2_4_dny(self):
+        self.assertEqual(_czech_days(2), "za 2 dny")
+        self.assertEqual(_czech_days(4), "za 4 dny")
+
+    def test_5_plus_dni(self):
+        self.assertEqual(_czech_days(5), "za 5 dní")
+        self.assertEqual(_czech_days(363), "za 363 dní")
+
+
+# ---------------------------------------------------------------------------
+# get_upcoming_birthdays
+# ---------------------------------------------------------------------------
+
+_SAMPLE_BIRTHDAYS = [
+    {"name": "Ríša",  "dob": datetime.date(2014,  4,  4)},
+    {"name": "Máma",  "dob": datetime.date(1983, 11, 19)},
+    {"name": "Táta",  "dob": datetime.date(1984,  3, 12)},
+]
+
+
+class TestGetUpcomingBirthdays(unittest.TestCase):
+
+    def _run(self, today_iso, n=3, blist=_SAMPLE_BIRTHDAYS):
+        return get_upcoming_birthdays(datetime.date.fromisoformat(today_iso), n=n, birthdays_list=blist)
+
+    def test_is_today_true_on_birthday(self):
+        results = self._run("2026-04-04")
+        risa = next(r for r in results if r["name"] == "Ríša")
+        self.assertTrue(risa["is_today"])
+
+    def test_is_today_false_when_not_birthday(self):
+        results = self._run("2026-03-14")
+        for r in results:
+            self.assertFalse(r["is_today"])
+
+    def test_days_until_zero_on_birthday(self):
+        results = self._run("2026-04-04")
+        risa = next(r for r in results if r["name"] == "Ríša")
+        self.assertEqual(risa["days_until"], 0)
+
+    def test_sorted_by_days_until(self):
+        results = self._run("2026-03-14", n=3)
+        days = [r["days_until"] for r in results]
+        self.assertEqual(days, sorted(days))
+
+    def test_returns_n_results(self):
+        self.assertEqual(len(self._run("2026-03-14", n=2)), 2)
+        self.assertEqual(len(self._run("2026-03-14", n=3)), 3)
+
+    def test_birthday_this_year_before_today_rolls_to_next_year(self):
+        # Táta's birthday is March 12; running on March 14 → next one is 2027
+        results = self._run("2026-03-14")
+        tata = next(r for r in results if r["name"] == "Táta")
+        self.assertEqual(tata["date"].year, 2027)
+
+    def test_age_correct_on_birthday(self):
+        results = self._run("2026-04-04")
+        risa = next(r for r in results if r["name"] == "Ríša")
+        self.assertEqual(risa["age"], 12)
+
+    def test_age_none_for_year_unknown(self):
+        blist = [{"name": "X", "dob": datetime.date(2000, 9, 15), "year_unknown": True}]
+        results = self._run("2026-03-14", n=1, blist=blist)
+        self.assertIsNone(results[0]["age"])
+
+
+# ---------------------------------------------------------------------------
+# build_birthday_html
+# ---------------------------------------------------------------------------
+
+def _bday(name, month, day, age=30, is_today=False):
+    return {
+        "name": name,
+        "date": datetime.date(2026, month, day),
+        "days_until": 0 if is_today else 21,
+        "age": age,
+        "is_today": is_today,
+    }
+
+
+class TestBuildBirthdayHtml(unittest.TestCase):
+
+    def test_name_in_output(self):
+        self.assertIn("Ríša", build_birthday_html([_bday("Ríša", 4, 4)]))
+
+    def test_age_shown(self):
+        self.assertIn("12 let", build_birthday_html([_bday("Ríša", 4, 4, age=12)]))
+
+    def test_age_hidden_when_none(self):
+        html = build_birthday_html([_bday("Lída", 9, 15, age=None)])
+        self.assertNotIn("let", html)
+        self.assertNotIn("rok", html)
+
+    def test_bday_today_class_when_is_today(self):
+        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=True)])
+        self.assertIn("bday-today", html)
+
+    def test_celebration_icon_when_is_today(self):
+        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=True)])
+        self.assertIn("celebration", html)
+
+    def test_cake_icon_when_not_today(self):
+        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=False)])
+        self.assertIn("cake", html)
+        self.assertNotIn("celebration", html)
+
+    def test_no_bday_today_class_when_not_today(self):
+        html = build_birthday_html([_bday("Ríša", 4, 4, is_today=False)])
+        self.assertNotIn("bday-today", html)
+
+    def test_bday_today_class_with_unknown_age(self):
+        html = build_birthday_html([_bday("Lída", 9, 15, age=None, is_today=True)])
+        self.assertIn("bday-today", html)
+
+    def test_multiple_entries_rendered(self):
+        html = build_birthday_html([_bday("Ríša", 4, 4), _bday("Máma", 11, 19)])
+        self.assertIn("Ríša", html)
+        self.assertIn("Máma", html)
 
 
 if __name__ == "__main__":
