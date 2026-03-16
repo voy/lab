@@ -410,7 +410,7 @@ def build_forecast_table(forecast):
             <td class="col-icon"><img class="row-icon" src="{icon_url}"></td>
             <td class="col-temp">{f['temp']}°</td>
             <td class="col-desc">{f['desc']}</td>
-            <td class="col-precip"><div><span class="icon">water_drop</span>{precip_val} <span class="precip-unit">mm</span></div></td>
+            <td class="col-precip"><div><span class="icon">water_drop</span><span class="precip-val">{precip_val}</span> <span class="precip-unit">mm</span></div></td>
         </tr>"""
     return rows_html
 
@@ -526,12 +526,13 @@ def create_screenshot(data):
             }}
             .col-precip {{ vertical-align: middle; }}
             .col-precip div {{
-                font-size: 22px; color: black; font-weight: 400;
+                font-size: 22px; color: black; font-weight: 600;
                 white-space: nowrap;
                 display: flex; align-items: center; gap: 2px;
             }}
             .precip-unit {{ font-size: 14px; opacity: 0.5; align-self: flex-end; margin-bottom: 2px; }}
             .col-precip .icon {{ font-size: 22px; line-height: 0; position: relative; top: 0.5px; }}
+            .precip-val {{ display: inline-block; min-width: 2.2ch; text-align: right; font-variant-numeric: tabular-nums; }}
 
 
             .bday-item {{
