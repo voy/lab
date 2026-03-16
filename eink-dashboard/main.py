@@ -418,7 +418,7 @@ def build_forecast_table(forecast):
 def _meal_html(meal):
     if not meal:
         return '<span style="opacity:0.4">nic neobjednáno</span>'
-    return ", ".join(f"<nobr>{p.strip()}</nobr>" for p in meal.split(","))
+    return meal
 
 
 def build_lunch_html(lunch, day_label):
@@ -463,23 +463,25 @@ def create_screenshot(data):
                 width: 480px; height: 800px;
                 display: grid;
                 grid-template-rows: auto auto auto 1fr auto auto;
-                padding: 20px;
+                padding: 16px 18px;
                 gap: 14px;
                 box-sizing: border-box;
                 filter: grayscale(1);
+                overflow: hidden;
             }}
             .header {{
                 border-bottom: 4px solid black;
                 padding-bottom: 10px;
                 text-align: center;
             }}
-            .date {{ font-size: 32px; font-weight: bold; }}
+            .date {{ font-size: 28px; font-weight: bold; }}
             .svatek {{ font-size: 21px; margin-top: 5px; }}
             .svatek span {{ font-weight: bold; }}
 
             table {{
                 width: 100%;
                 border-collapse: collapse;
+                table-layout: fixed;
             }}
             tr {{ border-bottom: 1px solid #ccc; }}
             td {{ padding: 17px 4px; vertical-align: middle; }}
@@ -524,7 +526,7 @@ def create_screenshot(data):
                 font-size: 14px; line-height: 1.4;
                 color: black;
             }}
-            .col-precip {{ vertical-align: middle; }}
+            .col-precip {{ vertical-align: middle; width: 84px; }}
             .col-precip div {{
                 font-size: 22px; color: black; font-weight: 600;
                 white-space: nowrap;
@@ -574,6 +576,7 @@ def create_screenshot(data):
             }}
             .lunch-meal {{
                 font-size: 14px; line-height: 1.35;
+                overflow-wrap: break-word; min-width: 0;
             }}
             .lunch-split .lunch-name {{ font-size: 12px; }}
             .lunch-split .lunch-meal {{ font-size: 12px; }}
