@@ -418,7 +418,7 @@ def build_forecast_table(forecast):
 def _meal_html(meal):
     if not meal:
         return '<span style="opacity:0.4">nic neobjednáno</span>'
-    return meal
+    return ", ".join(f"<nobr>{p.strip()}</nobr>" for p in meal.split(","))
 
 
 def build_lunch_html(lunch, day_label):
@@ -551,7 +551,7 @@ def create_screenshot(data):
             .bday-day {{ display: inline-block; width: 26px; text-align: right; }}
             .bday-month {{ padding-left: 3px; }}
             .bday-age {{ font-weight: 600; width: 60px; text-align: right; }}
-            .bday-days {{ opacity: 0.5; font-size: 13px; width: 75px; text-align: right; }}
+            .bday-days {{ font-size: 14px; width: 75px; text-align: right; }}
             .bday-today {{ background: black; color: white; border-radius: 8px; margin: 0 -6px; padding: 5px 6px; }}
 
             .lunch {{
