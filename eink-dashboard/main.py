@@ -418,7 +418,7 @@ def build_forecast_table(forecast):
 def _meal_html(meal):
     if not meal:
         return '<span style="opacity:0.4">nic neobjednáno</span>'
-    return ", ".join(f"<nobr>{p.strip()}</nobr>" for p in meal.split(","))
+    return meal
 
 
 def build_lunch_html(lunch, day_label):
