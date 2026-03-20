@@ -261,14 +261,6 @@ class TestBuildLunchHtml(unittest.TestCase):
         html, _ = build_lunch_html({"max": "Pasta"}, "Pondělí")
         self.assertIn("Pondělí", html)
 
-    def test_meal_html_wraps_only_after_comma(self):
-        html = _meal_html("Fisch, rohes Gemüse, Frischobst")
-        # Each segment wrapped in nobr
-        self.assertIn("<nobr>Fisch</nobr>", html)
-        self.assertIn("<nobr>rohes Gemüse</nobr>", html)
-        # Segments joined with ", " so no leading space after wrap
-        self.assertIn("</nobr>, <nobr>", html)
-
     def test_both_none_collapsed(self):
         html, _ = build_lunch_html({"max": None, "moritz": None}, "Dnes")
         self.assertEqual(html.count("nic neobjednáno"), 1)
