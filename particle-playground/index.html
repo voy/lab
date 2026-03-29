@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>particle-playground</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #legend {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      color: #8b949e;
+      font-size: 12px;
+      line-height: 2;
+      pointer-events: none;
+    }
+
+    #legend span {
+      color: #e6edf3;
+      font-family: monospace;
+    }
+
+    #back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      color: #58a6ff;
+      font-size: 13px;
+      text-decoration: none;
+      opacity: 0.6;
+      transition: opacity 0.15s;
+    }
+
+    #back:hover { opacity: 1; }
+
+    #trail-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      font-size: 13px;
+      padding: 6px 14px;
+      cursor: pointer;
+    }
+
+    #trail-toggle:hover { border-color: #58a6ff; }
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="legend">
+  each frame:<br>
+  &nbsp;&nbsp;<span>x += vx</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← move sideways<br>
+  &nbsp;&nbsp;<span>y += vy</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← move up/down<br>
+  &nbsp;&nbsp;<span>vy += gravity (0.12)</span> &nbsp;← pull down<br>
+  &nbsp;&nbsp;<span>life -= 1</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← age<br>
+  &nbsp;&nbsp;<span>alpha = life / maxLife</span> ← fade out
+</div>
+
+<a href="../" id="back">← lab</a>
+<button id="trail-toggle">trail: ON</button>
+
+<script>
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  // resize canvas to fill window
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // --- particle system constants ---
+  const GRAVITY      = 0.12;  // acceleration added to vy each frame
+  const PARTICLE_COUNT = 300;
+  const COLORS = ['#58a6ff', '#79c0ff', '#a5d6ff', '#cae8ff', '#ffffff'];
+
+  // --- a single particle ---
+  // we reuse the same array of objects forever (no garbage collection)
+  function makeParticle() {
+    return { x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, color: '#fff' };
+  }
+
+  // give a particle fresh starting values
+  function respawn(p) {
+    p.x       = canvas.width / 2;
+    p.y       = canvas.height - 60;           // bottom-center origin
+
+    const angle  = -Math.PI / 2               // straight up
+                 + (Math.random() - 0.5) * 1; // ± spread (radians)
+    const speed  = 4 + Math.random() * 8;     // random launch speed
+
+    p.vx      = Math.cos(angle) * speed;
+    p.vy      = Math.sin(angle) * speed;      // negative = upward on canvas
+
+    p.maxLife = 60 + Math.random() * 80;      // frames alive
+    p.life    = p.maxLife;
+    p.color   = COLORS[Math.floor(Math.random() * COLORS.length)];
+  }
+
+  // create the pool and scatter starting lifetimes so they don't all
+  // spawn at once on the first frame
+  const particles = Array.from({ length: PARTICLE_COUNT }, () => {
+    const p = makeParticle();
+    respawn(p);
+    p.life = Math.random() * p.maxLife; // stagger
+    return p;
+  });
+
+  // --- trail toggle: cycles through 3 modes ---
+  const MODES = ['trail', 'clear', 'accumulate'];
+  let modeIndex = 0;
+  const btn = document.getElementById('trail-toggle');
+  btn.textContent = `mode: ${MODES[modeIndex]}`;
+  btn.addEventListener('click', () => {
+    modeIndex = (modeIndex + 1) % MODES.length;
+    btn.textContent = `mode: ${MODES[modeIndex]}`;
+    if (MODES[modeIndex] === 'accumulate') {
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // start fresh
+    }
+  });
+
+  // --- main loop ---
+  function frame() {
+    const mode = MODES[modeIndex];
+    if (mode === 'trail') {
+      // dim the previous frame — old dots fade toward background
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.25)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (mode === 'clear') {
+      // instant wipe — each frame starts clean
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    // accumulate: do nothing — dots pile up forever
+
+    for (const p of particles) {
+      // 1. physics update
+      p.x  += p.vx;
+      p.y  += p.vy;
+      p.vy += GRAVITY;   // gravity pulls down every frame
+      p.life -= 1;
+
+      // 2. respawn when lifetime is up
+      if (p.life <= 0) {
+        respawn(p);
+      }
+
+      // 3. draw
+      const alpha = p.life / p.maxLife;   // 1.0 → 0.0 as particle ages
+      const radius = 2 + alpha * 1.5;     // slightly shrinks as it fades
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  }
+
+  frame();
+</script>
+
+</body>
+</html>
