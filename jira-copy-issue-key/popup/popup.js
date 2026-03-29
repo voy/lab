@@ -85,6 +85,7 @@ async function init() {
 
   document.getElementById('not-found').hidden = true;
   document.getElementById('found').hidden = false;
+  copyKeyBtn.focus();
 }
 
 init();
