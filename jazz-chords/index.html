@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jazz Chord Quiz</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0e0e12;
+    color: #e8e4d9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+  header p { font-size: 12px; color: #6b6760; margin-top: 4px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .progress { font-size: 13px; color: #6b6760; margin-bottom: 16px; letter-spacing: 0.05em; text-align: center; }
+
+  .card-wrap { width: 100%; max-width: 480px; margin-bottom: 20px; }
+
+  .card {
+    width: 100%;
+    min-height: 260px;
+    background: #16161c;
+    border: 1px solid #2a2a35;
+    border-radius: 16px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s;
+  }
+
+  .card.revealed { border-color: #3d3a50; justify-content: flex-start; }
+
+  /* front */
+  .chord-name { font-size: 72px; font-weight: 700; letter-spacing: -0.02em; color: #c9b97a; line-height: 1; }
+  .prompt { font-size: 14px; color: #4a4850; margin-top: 14px; letter-spacing: 0.04em; }
+
+  /* revealed */
+  .chord-name-small { font-size: 26px; font-weight: 700; color: #c9b97a; margin-bottom: 14px; align-self: flex-start; }
+
+  .inversion-badge {
+    font-size: 11px; color: #908c99;
+    background: #1e1c2a; border: 1px solid #3a3850;
+    border-radius: 20px; padding: 3px 10px;
+    margin-bottom: 14px; align-self: flex-start;
+  }
+
+  .notes-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; align-self: flex-start; }
+
+  .note-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+  .note-pill {
+    background: #23222e; border: 1px solid #3a3850;
+    border-radius: 8px; padding: 5px 14px;
+    font-size: 18px; font-weight: 600; color: #e0d9f0;
+  }
+
+  .note-pill.is-bass { border-color: #c9b97a; color: #e8c84a; }
+
+  .interval-label { font-size: 11px; color: #565460; letter-spacing: 0.04em; }
+
+  .piano-wrap { width: 100%; margin-bottom: 6px; }
+  .piano-label { font-size: 11px; color: #565460; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 6px; margin-top: 14px; }
+  .piano-legend { display: flex; gap: 14px; font-size: 11px; color: #565460; margin-top: 10px; margin-bottom: 4px; align-items: center; }
+  .piano-legend span { display: flex; align-items: center; gap: 5px; }
+
+  .divider { width: 100%; height: 1px; background: #2a2a35; margin-bottom: 14px; }
+
+  .theory { font-size: 13px; line-height: 1.7; color: #908c99; align-self: flex-start; }
+  .theory strong { color: #b8b3c8; }
+
+  /* controls */
+  .controls { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 480px; }
+
+  .btn-reveal {
+    width: 100%; padding: 13px;
+    background: #c9b97a; color: #0e0e12;
+    border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.02em; transition: background 0.15s;
+  }
+  .btn-reveal:hover { background: #d9ca8a; }
+  .btn-reveal:disabled { opacity: 0.3; cursor: default; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Jazz Chord Quiz</h1>
+  <p>Autumn Leaves · Johnny Mercer</p>
+</header>
+
+<div class="progress" id="progress">#1</div>
+
+<div class="card-wrap">
+  <div class="card" id="card"></div>
+</div>
+
+<div class="controls">
+  <button class="btn-reveal" id="btn">Show Notes & Theory</button>
+</div>
+
+<script>
+// ─── chord data ───────────────────────────────────────────────────────────────
+// voicing: ASCII note names, low→high
+// intervals: interval of each voicing note from root
+const G_MAJOR = {notes: ['G','A','B','C','D','E','F#'], name: 'G major'};
+
+const chords = [
+  {
+    name: "A-7", root: "A",
+    voicing: ["E","G","A","C"],
+    fingering: [5,3,2,1],
+    intervals: ["P5","m7","R","m3"],
+    scale: G_MAJOR,
+    theory: `<strong>A minor 7</strong> — gentle, a little sad.<br>
+A minor is just A C E — the 'm' means minor, which gives it that darker, softer feel compared to a major chord. The '7' means we add one extra note on top (G), making it richer and jazzier.<br>
+Here the notes go E–G–A–C: notice A (the 'main' note) isn't at the bottom — that's what the "2nd inversion" badge means. It gives the chord a slightly floating quality.`
+  },
+  {
+    name: "D7", root: "D",
+    voicing: ["D","F#","A","C"],
+    fingering: [5,3,2,1],
+    intervals: ["R","M3","P5","m7"],
+    scale: G_MAJOR,
+    theory: `<strong>D7</strong> — tense, unstable, wants to move.<br>
+D major is D F# A. Adding C on top creates a restless feeling — your ear expects the chord to go somewhere after hearing it. That tension and release is the core of jazz.<br>
+In this exercise D7 resolves to Gmaj7 right after it. Play them back to back and you'll hear the 'question → answer' feeling clearly.`
+  },
+  {
+    name: "Gmaj7", root: "G",
+    voicing: ["D","F#","G","B"],
+    fingering: [5,3,2,1],
+    intervals: ["P5","M7","R","M3"],
+    scale: G_MAJOR,
+    theory: `<strong>Gmaj7</strong> — warm, dreamy, at rest.<br>
+G major is G B D. Adding F# (the note just one half-step below the next G) makes it feel open and jazzy rather than fully closed off. That's the Bill Evans sound — resolution that still floats.<br>
+Notice that D and F# are also in D7. Your left hand barely moves between these two chords, which is intentional — smooth voice leading.`
+  },
+  {
+    name: "Cmaj7", root: "C",
+    voicing: ["C","E","G","B"],
+    fingering: [5,3,2,1],
+    intervals: ["R","M3","P5","M7"],
+    scale: G_MAJOR,
+    theory: `<strong>Cmaj7</strong> — open and peaceful. You already know this one!<br>
+You know C major: C E G. This is just that chord with B added on top. B is the note right below the next C, so it gives the chord a slightly 'not quite finished' feeling — open, airy.<br>
+It's one of the easiest jazz chords to understand because you already know its base.`
+  },
+  {
+    name: "F♯ø7", root: "F#",
+    voicing: ["C","E","F#","A"],
+    fingering: [5,3,2,1],
+    intervals: ["♭5","m7","R","m3"],
+    scale: G_MAJOR,
+    theory: `<strong>F♯ half-diminished</strong> — shadowy and tense.<br>
+The 'ø' symbol means half-diminished. Think of it as a minor chord that sounds even more unstable than usual — one of the notes is shifted down an extra half-step, making it darker and more restless.<br>
+It's a common passing chord in jazz: your ear hears it and knows something is about to change. Don't worry about the name for now — just notice how unsettled it sounds compared to the major chords.`
+  },
+  {
+    name: "B7", root: "B",
+    voicing: ["B","D#","F#","A"],
+    fingering: [5,3,2,1],
+    intervals: ["R","M3","P5","m7"],
+    scale: G_MAJOR,
+    theory: `<strong>B7</strong> — tense, dramatic, like a plot twist.<br>
+B major is B D# F#. The D# is the key detail — in G major the note is normally D, but here it's D# (one half-step higher). That small change gives the chord a sharp, dramatic edge.<br>
+It works like D7 does: it's a tense chord that resolves to the next one (E minor). Play B7 → E minor and listen to how strongly it lands.`
+  },
+  {
+    name: "E-", root: "E",
+    voicing: ["B","E","G"],
+    fingering: [5,2,1],
+    intervals: ["P5","R","m3"],
+    scale: G_MAJOR,
+    theory: `<strong>E minor</strong> — simple and melancholic.<br>
+Just three notes: E G B. No 7th, no extras — the most basic chord type. Minor means darker/sadder than major.<br>
+Here's something cool: E minor and G major use exactly the same notes (G A B C D E F#). The difference is just which note you start on. Start on G → sounds happy. Start on E → sounds sad. Same notes, totally different feeling.`
+  }
+];
+
+// ─── piano helpers ────────────────────────────────────────────────────────────
+const SEMITONE  = {C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11};
+const WHITE_KEYS = ['C','D','E','F','G','A','B'];
+// each black key: the white key index (within octave) to its left
+const BLACK_KEY_DEFS = [
+  {note:'C#', li:0}, {note:'D#', li:1},
+  {note:'F#', li:3}, {note:'G#', li:4}, {note:'A#', li:5}
+];
+
+function normNote(n) {
+  const map = {'Bb':'A#','Eb':'D#','Ab':'G#','Db':'C#','Gb':'F#'};
+  const s = n.replace('♯','#').replace('♭','b');
+  return map[s] || s;
+}
+
+// Assign octave numbers to a voicing (array of ASCII note names, low→high).
+// Each time a note is ≤ previous semitone, octave increments.
+function assignOctaves(voicing) {
+  let oct = 0, prev = -1;
+  return voicing.map(n => {
+    const nn = normNote(n);
+    const s = SEMITONE[nn];
+    if (prev >= 0 && s <= prev) oct++;
+    prev = s;
+    return {note: nn, octave: oct};
+  });
+}
+
+function inversionLabel(intervals) {
+  const b = intervals[0];
+  if (b === 'R')                               return 'Root position';
+  if (b === 'M3' || b === 'm3')               return '1st inversion  (3rd in bass)';
+  if (b === 'P5' || b === '♭5' || b === 'A5') return '2nd inversion  (5th in bass)';
+  if (b === 'M7' || b === 'm7' || b === 'dim7') return '3rd inversion  (7th in bass)';
+  return '';
+}
+
+function renderPiano(voicingWithOctaves) {
+  const W = 26, H = 76, BW = 15, BH = 47, DR = 6; // key dims, dot radius
+  const totalW = 14 * W; // 2 octaves
+
+  // map "note-octave" → voicing index (0 = bass)
+  const hl = new Map();
+  voicingWithOctaves.forEach((v, i) => hl.set(`${v.note}-${v.octave}`, i));
+
+  const TONE_CLR  = '#c9b97a';
+
+  let w = '', b = ''; // white and black key SVG strings
+
+  for (let oct = 0; oct < 2; oct++) {
+    // white keys
+    WHITE_KEYS.forEach((note, wi) => {
+      const x = (oct * 7 + wi) * W;
+      const vi = hl.get(`${note}-${oct}`);
+      const isH = vi !== undefined, isBass = vi === 0;
+      w += `<rect x="${x+.5}" y=".5" width="${W-1}" height="${H-1}" fill="#e8e4d0" stroke="#aaa" stroke-width=".5" rx="0 0 3 3"/>`;
+      if (isH) w += `<circle cx="${x + W/2}" cy="${H-11}" r="${DR}" fill="${TONE_CLR}"/>`;
+    });
+
+    // black keys
+    BLACK_KEY_DEFS.forEach(({note, li}) => {
+      const x = (oct * 7 + li) * W + W - BW / 2;
+      const vi = hl.get(`${note}-${oct}`);
+      const isH = vi !== undefined, isBass = vi === 0;
+      b += `<rect x="${x}" y="0" width="${BW}" height="${BH}" fill="#1a1a22" stroke="#0e0e12" stroke-width=".5" rx="0 0 3 3"/>`;
+      if (isH) b += `<circle cx="${x + BW/2}" cy="${BH-9}" r="${DR-1}" fill="${TONE_CLR}"/>`;
+    });
+  }
+
+  // octave divider line
+  const divX = 7 * W;
+  const div = `<line x1="${divX}" y1="0" x2="${divX}" y2="${H}" stroke="#2a2a35" stroke-width="1"/>`;
+
+  return `<svg viewBox="0 0 ${totalW} ${H}" width="100%" style="max-width:${totalW}px;display:block;" xmlns="http://www.w3.org/2000/svg">${w}${b}${div}</svg>`;
+}
+
+// B-to-C keyboard layout (covers all voicings in this exercise)
+// wi = white key index (0–8), li = left white key index for black keys
+const KEYBOARD = [
+  {note:'B',  abs:11, wi:0, type:'white'},
+  {note:'C',  abs:12, wi:1, type:'white'},
+  {note:'C#', abs:13, li:1, type:'black'},
+  {note:'D',  abs:14, wi:2, type:'white'},
+  {note:'D#', abs:15, li:2, type:'black'},
+  {note:'E',  abs:16, wi:3, type:'white'},
+  {note:'F',  abs:17, wi:4, type:'white'},
+  {note:'F#', abs:18, li:4, type:'black'},
+  {note:'G',  abs:19, wi:5, type:'white'},
+  {note:'G#', abs:20, li:5, type:'black'},
+  {note:'A',  abs:21, wi:6, type:'white'},
+  {note:'A#', abs:22, li:6, type:'black'},
+  {note:'B',  abs:23, wi:7, type:'white'},
+  {note:'C',  abs:24, wi:8, type:'white'},
+];
+
+function renderScalePiano(scaleTones, chordTones, rootNote, fingering) {
+  const W = 26, H = 66, BW = 15, BH = 42;
+  const totalW = 9 * W; // 9 white keys: B C D E F G A B C
+
+  const scaleSet = new Set(scaleTones.map(normNote));
+  const root = normNote(rootNote);
+
+  // Normalize voicing to fit B(11)–C(24) range
+  const voicingOct = assignOctaves(chordTones);
+  let absVals = voicingOct.map(v => v.octave * 12 + SEMITONE[v.note]);
+  const minAbs = Math.min(...absVals);
+  const shift = minAbs < 11 ? Math.ceil((11 - minAbs) / 12) * 12 : 0;
+  const shiftedVals = absVals.map(a => a + shift);
+  const chordAbsSet = new Set(shiftedVals);
+  const fingerMap = new Map(shiftedVals.map((a, i) => [a, fingering[i]]));
+
+  let whites = '', blacks = '';
+
+  KEYBOARD.forEach(key => {
+    const inS = scaleSet.has(key.note);
+    const inC = chordAbsSet.has(key.abs);
+    const isRoot = inC && key.note === root;
+
+    if (key.type === 'white') {
+      const x = key.wi * W, cx = x + W/2, cy = H - 13;
+      whites += `<rect x="${x+.5}" y=".5" width="${W-1}" height="${H-1}" fill="#cdc9b8" stroke="#999" stroke-width=".5" rx="0 0 3 3"/>`;
+      if (inC) {
+        whites += `<circle cx="${cx}" cy="${cy}" r="8" fill="#e8e4d9" stroke="${isRoot ? '#e07a5f' : '#555'}" stroke-width="${isRoot ? 2 : 1}"/>`;
+        whites += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="9" font-weight="600" fill="#333">${fingerMap.get(key.abs)}</text>`;
+      } else if (inS) whites += `<circle cx="${cx}" cy="${cy}" r="3" fill="#999"/>`;
+    } else {
+      const x = key.li * W + W - BW/2, cx = x + BW/2, cy = BH - 11;
+      blacks += `<rect x="${x}" y="0" width="${BW}" height="${BH}" fill="#252525" stroke="#111" stroke-width=".5" rx="0 0 3 3"/>`;
+      if (inC) {
+        blacks += `<circle cx="${cx}" cy="${cy}" r="6" fill="#e8e4d9" stroke="${isRoot ? '#e07a5f' : 'none'}" stroke-width="${isRoot ? 2 : 0}"/>`;
+        blacks += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="600" fill="#333">${fingerMap.get(key.abs)}</text>`;
+      } else if (inS) blacks += `<circle cx="${cx}" cy="${cy}" r="2.5" fill="#777"/>`;
+    }
+  });
+
+  return `<svg viewBox="0 0 ${totalW} ${H}" width="100%" style="max-width:${totalW}px;display:block;" xmlns="http://www.w3.org/2000/svg">${whites}${blacks}</svg>`;
+}
+
+// ─── display note with unicode sharps/flats ───────────────────────────────────
+function displayNote(n) {
+  return n.replace('#','♯').replace('b','♭');
+}
+
+// ─── quiz state ───────────────────────────────────────────────────────────────
+let count = 0;        // total cards shown
+let currentIdx = 0;   // index into chords[]
+let lastIdx = -1;     // avoid immediate repeat
+let revealed = false;
+
+const card     = document.getElementById('card');
+const btn      = document.getElementById('btn');
+const progress = document.getElementById('progress');
+
+function pickNext() {
+  let r;
+  do { r = Math.floor(Math.random() * chords.length); } while (r === lastIdx && chords.length > 1);
+  lastIdx = r;
+  return r;
+}
+
+function render() {
+  count++;
+  revealed = false;
+  btn.textContent = 'Show Notes & Theory';
+  card.classList.remove('revealed');
+  card.innerHTML = `
+    <div class="chord-name">${chords[currentIdx].name}</div>
+    <div class="prompt">What are the notes?</div>
+  `;
+  progress.textContent = `#${count}`;
+  btn.focus();
+}
+
+function reveal() {
+  if (revealed) return;
+  revealed = true;
+
+  const chord = chords[currentIdx];
+  const voicingOct = assignOctaves(chord.voicing);
+
+  const pillsHtml = chord.voicing.map((n, i) => `
+    <div class="note-wrap">
+      <div class="note-pill${i === 0 ? ' is-bass' : ''}">${displayNote(n)}</div>
+      <div class="interval-label">${chord.intervals[i]}</div>
+    </div>
+  `).join('');
+
+  card.classList.add('revealed');
+  card.innerHTML = `
+    <div class="chord-name-small">${chord.name}</div>
+    <div class="notes-row">${pillsHtml}</div>
+    <div class="inversion-badge">${inversionLabel(chord.intervals)}</div>
+    <div class="piano-wrap">${renderScalePiano(chord.scale.notes, chord.voicing, chord.root, chord.fingering)}</div>
+    <div class="piano-legend">
+      <span><svg width="8" height="8" style="flex-shrink:0"><circle cx="4" cy="4" r="3" fill="#999"/></svg>in scale</span>
+      <span><svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="5" fill="#e8e4d9" stroke="#555" stroke-width="1"/></svg>in chord</span>
+      <span><svg width="12" height="12" style="flex-shrink:0"><circle cx="6" cy="6" r="4" fill="#e8e4d9" stroke="#e07a5f" stroke-width="2"/></svg>root</span>
+    </div>
+    <div class="divider"></div>
+    <div class="theory">${chord.theory}</div>
+  `;
+}
+
+btn.addEventListener('click', () => {
+  if (!revealed) {
+    reveal();
+    btn.textContent = 'Next chord →';
+  } else {
+    currentIdx = pickNext();
+    render();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    btn.click();
+  }
+});
+
+currentIdx = pickNext();
+render();
+</script>
+</body>
+</html>
