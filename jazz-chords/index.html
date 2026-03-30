@@ -16,29 +16,38 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: 16px;
   }
 
-  header { text-align: center; margin-bottom: 28px; }
-  header h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
-  header p { font-size: 12px; color: #6b6760; margin-top: 4px; letter-spacing: 0.06em; text-transform: uppercase; }
+  header { text-align: center; margin-bottom: 16px; }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.04em; }
+  header p { font-size: 11px; color: #6b6760; margin-top: 3px; letter-spacing: 0.06em; text-transform: uppercase; }
 
-  .progress { font-size: 13px; color: #6b6760; margin-bottom: 16px; letter-spacing: 0.05em; text-align: center; }
+  @media (min-height: 700px) {
+    body { padding: 24px; }
+    header { margin-bottom: 28px; }
+    header h1 { font-size: 22px; }
+  }
 
-  .card-wrap { width: 100%; max-width: 480px; margin-bottom: 20px; }
+  .progress { font-size: 13px; color: #6b6760; margin-bottom: 10px; letter-spacing: 0.05em; text-align: center; }
+
+  .card-wrap { width: 100%; max-width: 480px; margin-bottom: 14px; }
 
   .card {
     width: 100%;
-    min-height: 260px;
+    min-height: 220px;
     background: #16161c;
     border: 1px solid #2a2a35;
     border-radius: 16px;
-    padding: 32px 28px;
+    padding: 24px 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     transition: border-color 0.2s;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
   }
 
   .card.revealed { border-color: #3d3a50; justify-content: flex-start; }
@@ -49,6 +58,11 @@
 
   /* revealed */
   .chord-name-small { font-size: 26px; font-weight: 700; color: #c9b97a; margin-bottom: 14px; align-self: flex-start; }
+
+  .recipe {
+    font-size: 13px; color: #565460; letter-spacing: 0.08em;
+    margin-bottom: 10px; align-self: flex-start; font-variant-numeric: tabular-nums;
+  }
 
   .inversion-badge {
     font-size: 11px; color: #908c99;
@@ -81,6 +95,31 @@
   .theory { font-size: 13px; line-height: 1.7; color: #908c99; align-self: flex-start; }
   .theory strong { color: #b8b3c8; }
 
+  /* help */
+  .help-toggle {
+    background: none; border: 1px solid #2a2a35; border-radius: 20px;
+    color: #565460; font-size: 12px; cursor: pointer; padding: 4px 12px;
+    transition: color 0.15s, border-color 0.15s; margin-top: 4px;
+  }
+  .help-toggle:hover { color: #908c99; border-color: #3a3a50; }
+
+  .help-panel {
+    display: none; width: 100%; max-width: 480px;
+    background: #16161c; border: 1px solid #2a2a35; border-radius: 14px;
+    padding: 20px; margin-top: 14px;
+    font-size: 13px; line-height: 1.7; color: #908c99;
+  }
+  .help-panel.open { display: block; }
+  .help-panel h3 { font-size: 12px; font-weight: 600; color: #565460; letter-spacing: 0.06em; text-transform: uppercase; margin: 16px 0 6px; }
+  .help-panel h3:first-child { margin-top: 0; }
+  .help-panel strong { color: #b8b3c8; }
+  .help-panel .scale-desc { font-size: 12px; color: #6b6760; margin-bottom: 8px; }
+  .help-panel .scale-desc strong { color: #908c99; }
+  .help-panel #help-keyboard { margin-bottom: 16px; }
+  .help-panel table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .help-panel td { padding: 5px 0; vertical-align: top; }
+  .help-panel td:first-child { color: #b8b3c8; font-weight: 600; width: 70px; padding-right: 12px; white-space: nowrap; }
+
   /* controls */
   .controls { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 480px; }
 
@@ -111,6 +150,29 @@
 
 <div class="controls">
   <button class="btn-reveal" id="btn">Show Notes & Theory</button>
+  <button class="help-toggle" id="helpToggle">how chords work ↓</button>
+</div>
+
+<div class="help-panel" id="helpPanel">
+  <h3>G major scale</h3>
+  <p class="scale-desc">Used by 6 of 7 chords — one sharp: F♯</p>
+  <div id="help-gmajor"></div>
+
+  <h3>E harmonic minor</h3>
+  <p class="scale-desc">Same as G major but D♯ instead of D — used by <strong>B7</strong></p>
+  <div id="help-eharmmaj"></div>
+
+  <h3>Reference keyboard</h3>
+  <div id="help-keyboard"></div>
+
+  <h3>Chord suffixes</h3>
+  <table>
+    <tr><td>m &nbsp;or&nbsp; -</td><td>minor — darker than major</td></tr>
+    <tr><td>7</td><td>dominant 7th — tense, wants to resolve</td></tr>
+    <tr><td>maj7</td><td>major 7th — dreamy, open</td></tr>
+    <tr><td>m7</td><td>minor 7th — minor + dominant 7th</td></tr>
+    <tr><td>ø7</td><td>half-diminished — dark and unstable</td></tr>
+  </table>
 </div>
 
 <script>
@@ -330,6 +392,48 @@ function renderScalePiano(scaleTones, chordTones, rootNote, fingering) {
   return `<svg viewBox="0 0 ${totalW} ${H}" width="100%" style="max-width:${totalW}px;display:block;" xmlns="http://www.w3.org/2000/svg">${whites}${blacks}</svg>`;
 }
 
+function renderScaleOnly(scaleTones) {
+  const W = 26, H = 66, BW = 15, BH = 42;
+  const totalW = 9 * W;
+  const scaleSet = new Set(scaleTones.map(normNote));
+
+  let whites = '', blacks = '';
+
+  KEYBOARD.forEach(key => {
+    const inS = scaleSet.has(key.note);
+    if (key.type === 'white') {
+      const x = key.wi * W, cx = x + W/2, cy = H - 13;
+      whites += `<rect x="${x+.5}" y=".5" width="${W-1}" height="${H-1}" fill="#cdc9b8" stroke="#999" stroke-width=".5" rx="0 0 3 3"/>`;
+      if (inS) whites += `<circle cx="${cx}" cy="${cy}" r="5" fill="#777"/>`;
+    } else {
+      const x = key.li * W + W - BW/2, cx = x + BW/2, cy = BH - 11;
+      blacks += `<rect x="${x}" y="0" width="${BW}" height="${BH}" fill="#252525" stroke="#111" stroke-width=".5" rx="0 0 3 3"/>`;
+      if (inS) blacks += `<circle cx="${cx}" cy="${cy}" r="4" fill="#c9b97a"/>`;
+    }
+  });
+
+  return `<svg viewBox="0 0 ${totalW} ${H}" width="100%" style="max-width:${totalW}px;display:block;" xmlns="http://www.w3.org/2000/svg">${whites}${blacks}</svg>`;
+}
+
+function renderPlainPiano() {
+  const W = 26, H = 66, BW = 15, BH = 42;
+  const totalW = 9 * W;
+
+  let whites = '', blacks = '';
+
+  KEYBOARD.forEach(key => {
+    if (key.type === 'white') {
+      const x = key.wi * W;
+      whites += `<rect x="${x+.5}" y=".5" width="${W-1}" height="${H-1}" fill="#cdc9b8" stroke="#999" stroke-width=".5" rx="0 0 3 3"/>`;
+    } else {
+      const x = key.li * W + W - BW/2;
+      blacks += `<rect x="${x}" y="0" width="${BW}" height="${BH}" fill="#252525" stroke="#111" stroke-width=".5" rx="0 0 3 3"/>`;
+    }
+  });
+
+  return `<svg viewBox="0 0 ${totalW} ${H}" width="100%" style="max-width:${totalW}px;display:block;" xmlns="http://www.w3.org/2000/svg">${whites}${blacks}</svg>`;
+}
+
 // ─── display note with unicode sharps/flats ───────────────────────────────────
 function displayNote(n) {
   return n.replace('#','♯').replace('b','♭');
@@ -359,7 +463,7 @@ function render() {
   card.classList.remove('revealed');
   card.innerHTML = `
     <div class="chord-name">${chords[currentIdx].name}</div>
-    <div class="prompt">What are the notes?</div>
+    <div class="prompt">Tap to reveal</div>
   `;
   progress.textContent = `#${count}`;
   btn.focus();
@@ -371,6 +475,9 @@ function reveal() {
 
   const chord = chords[currentIdx];
   const voicingOct = assignOctaves(chord.voicing);
+  const INTERVAL_ST = {R:0,'m3':3,'M3':4,'P5':7,'♭5':6,'A5':8,'m7':10,'M7':11,'dim7':9};
+  const stVals = [...new Set(chord.intervals.map(iv => INTERVAL_ST[iv] ?? 0))].sort((a,b) => a-b);
+  const recipe = stVals.slice(1).map((a, i) => a - stVals[i]).join(' – ');
 
   const pillsHtml = chord.voicing.map((n, i) => `
     <div class="note-wrap">
@@ -383,6 +490,7 @@ function reveal() {
   card.innerHTML = `
     <div class="chord-name-small">${chord.name}</div>
     <div class="notes-row">${pillsHtml}</div>
+    <div class="recipe">${recipe}</div>
     <div class="inversion-badge">${inversionLabel(chord.intervals)}</div>
     <div class="piano-wrap">${renderScalePiano(chord.scale.notes, chord.voicing, chord.root, chord.fingering)}</div>
     <div class="piano-legend">
@@ -394,6 +502,8 @@ function reveal() {
     <div class="theory">${chord.theory}</div>
   `;
 }
+
+card.addEventListener('click', () => btn.click());
 
 btn.addEventListener('click', () => {
   if (!revealed) {
@@ -412,8 +522,19 @@ document.addEventListener('keydown', e => {
   }
 });
 
+const helpToggle = document.getElementById('helpToggle');
+const helpPanel  = document.getElementById('helpPanel');
+helpToggle.addEventListener('click', () => {
+  const open = helpPanel.classList.toggle('open');
+  helpToggle.textContent = open ? 'how chords work ↑' : 'how chords work ↓';
+});
+
 currentIdx = pickNext();
 render();
+
+document.getElementById('help-gmajor').innerHTML   = renderScaleOnly(['G','A','B','C','D','E','F#']);
+document.getElementById('help-eharmmaj').innerHTML = renderScaleOnly(['E','F#','G','A','B','C','D#']);
+document.getElementById('help-keyboard').innerHTML = renderPlainPiano();
 </script>
 </body>
 </html>
