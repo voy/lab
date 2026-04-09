@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>grand-staff-quiz</title>
+  <style>
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #8b949e;
+      --accent-dim:  #1f6feb;
+      --correct:     #2ea043;
+      --correct-dim: #1a7431;
+      --wrong:       #da3633;
+      --wrong-dim:   #a3211e;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #main-area {
+      width: 100%;
+      max-width: 600px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 16px 12px;
+      gap: 8px;
+    }
+
+    #staff-container {
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px 12px;
+      width: 100%;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+    }
+
+    #staff-container svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    #controls {
+      width: 100%;
+      max-width: 600px;
+      padding: 8px 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    #answer-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .ans-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 600;
+      width: 52px;
+      height: 52px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .ans-btn:hover:not(:disabled) { border-color: var(--accent-dim); }
+    .ans-btn:disabled { opacity: 0.5; cursor: default; }
+    .ans-btn.correct { background: var(--correct);  border-color: var(--correct-dim); color: #fff; }
+    .ans-btn.wrong   { background: var(--wrong);    border-color: var(--wrong-dim);   color: #fff; }
+
+    #pool-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding-top: 4px;
+    }
+
+    #toggle-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 6px 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+    #toggle-btn:hover { color: var(--text); }
+
+    #config-panel {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #config-panel[hidden] { display: none; }
+
+    #textareas-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .clef-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .clef-editor label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .clef-textarea {
+      width: 100%;
+      height: 200px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.8;
+      padding: 10px 12px;
+      resize: vertical;
+      outline: none;
+    }
+    .clef-textarea:focus { border-color: var(--accent-dim); }
+
+    #config-btns {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    #reset-btn, #done-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      padding: 6px 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #reset-btn { color: var(--muted); }
+    #reset-btn:hover { border-color: var(--accent-dim); color: var(--text); }
+    #done-btn  { color: var(--text); border-color: var(--accent-dim); }
+    #done-btn:hover { border-color: #58a6ff; }
+
+    @media (max-width: 440px) {
+      #main-area  { padding: 12px 8px 8px; }
+      #controls   { padding: 8px 8px 16px; }
+      #staff-container { padding: 6px 6px; }
+      .ans-btn    { width: 42px; height: 42px; font-size: 16px; border-radius: 6px; }
+      #answer-row { gap: 5px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="main-area">
+    <div id="staff-container"></div>
+  </main>
+
+  <footer id="controls">
+    <div id="answer-row">
+      <button class="ans-btn" data-note="A">A</button>
+      <button class="ans-btn" data-note="B">B</button>
+      <button class="ans-btn" data-note="C">C</button>
+      <button class="ans-btn" data-note="D">D</button>
+      <button class="ans-btn" data-note="E">E</button>
+      <button class="ans-btn" data-note="F">F</button>
+      <button class="ans-btn" data-note="G">G</button>
+    </div>
+    <div id="pool-section">
+      <button id="toggle-btn">edit notes</button>
+      <div id="config-panel" hidden>
+        <div id="textareas-row">
+          <div class="clef-editor">
+            <label for="treble-textarea">Treble</label>
+            <textarea id="treble-textarea" class="clef-textarea" spellcheck="false"></textarea>
+          </div>
+          <div class="clef-editor">
+            <label for="bass-textarea">Bass</label>
+            <textarea id="bass-textarea" class="clef-textarea" spellcheck="false"></textarea>
+          </div>
+        </div>
+        <div id="config-btns">
+          <button id="reset-btn">reset to defaults</button>
+          <button id="done-btn">done</button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js"></script>
+  <script>
+    // ── Default note pool ────────────────────────────────────────────
+    const DEFAULT_TREBLE = `B3
+C4
+D4
+E4
+F4
+G4
+A4
+B4
+C5
+D5
+E5
+F5
+G5
+A5`;
+    const DEFAULT_BASS   = `E2
+F2
+G2
+A2
+B2
+C3
+D3
+E3
+F3
+G3
+A3
+B3
+C4
+D4
+E4`;
+
+    const STORAGE_KEY = 'grand-staff-pool-v2';
+
+    function parseClef(text, clef) {
+      return text.replace(/\\n/g, '\n').split('\n')
+        .map(l => l.trim())
+        .filter(l => !/^(#|\/\/)/.test(l))
+        .filter(l => /^[A-Ga-g]\d$/i.test(l))
+        .map(l => ({ key: `${l[0].toLowerCase()}/${l[1]}`, clef, name: l[0].toUpperCase() }));
+    }
+
+    function loadTexts() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+    }
+    function saveTexts(treble, bass) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        treble: treble.replace(/\\n/g, '\n'),
+        bass:   bass.replace(/\\n/g, '\n'),
+      }));
+    }
+
+    // ── VexFlow constants ────────────────────────────────────────────
+    const { Renderer, Stave, StaveNote, Voice, Formatter, StaveConnector } = Vex.Flow;
+
+    const STAFF_WIDTH = 400;
+    const STAFF_LEFT  = 56;
+    const STAVE_WIDTH = STAFF_WIDTH - STAFF_LEFT - 8;
+    const TREBLE_Y    = 35;
+    const BASS_Y      = 185;
+
+    const staffContainer = document.getElementById('staff-container');
+
+    function applyViewBox() {
+      const svg = staffContainer.querySelector('svg');
+      svg.setAttribute('viewBox', '10 45 400 240');
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+      svg.style.width = '100%';
+      svg.style.height = 'auto';
+    }
+
+    function buildStaves(ctx, withTimeSig = true) {
+      const treble = new Stave(STAFF_LEFT, TREBLE_Y, STAVE_WIDTH);
+      treble.addClef('treble');
+      if (withTimeSig) treble.addTimeSignature('4/4');
+      treble.setContext(ctx).draw();
+
+      const bass = new Stave(STAFF_LEFT, BASS_Y, STAVE_WIDTH);
+      bass.addClef('bass');
+      if (withTimeSig) bass.addTimeSignature('4/4');
+      bass.setContext(ctx).draw();
+
+      new StaveConnector(treble, bass).setType(StaveConnector.type.BRACE).setContext(ctx).draw();
+      new StaveConnector(treble, bass).setType(StaveConnector.type.SINGLE).setContext(ctx).draw();
+
+      return { treble, bass };
+    }
+
+    function renderNote(noteObj) {
+      staffContainer.innerHTML = '';
+      const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
+      renderer.resize(STAFF_WIDTH, 265);
+      const ctx = renderer.getContext();
+      const { treble, bass } = buildStaves(ctx, true);
+
+      const staveNote = new StaveNote({ keys: [noteObj.key], duration: 'w', clef: noteObj.clef });
+      const voice = new Voice({ num_beats: 4, beat_value: 4 });
+      voice.addTickables([staveNote]);
+      new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 8);
+      voice.draw(ctx, noteObj.clef === 'treble' ? treble : bass);
+
+      applyViewBox();
+    }
+
+    function renderConfigView(notes) {
+      staffContainer.innerHTML = '';
+      const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
+      renderer.resize(STAFF_WIDTH, 265);
+      const ctx = renderer.getContext();
+      const { treble, bass } = buildStaves(ctx, false);
+
+      try {
+        ['treble', 'bass'].forEach(clef => {
+          const sample = (notes || []).filter(n => n.clef === clef);
+          if (sample.length === 0) return;
+          const staveNotes = sample.map(n => new StaveNote({ keys: [n.key], duration: 'q', clef }));
+          const voice = new Voice({ num_beats: sample.length, beat_value: 4 });
+          voice.addTickables(staveNotes);
+          new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
+          voice.draw(ctx, clef === 'treble' ? treble : bass);
+        });
+      } catch (_) { /* VexFlow can't fit notes — show empty staves */ }
+
+      applyViewBox();
+    }
+
+    // ── State ────────────────────────────────────────────────────────
+    let pool        = [];
+    let currentNote = null;
+    let lastIdx     = -1;
+    let phase       = 'idle';
+    let configOpen  = false;
+
+    // ── Game logic ───────────────────────────────────────────────────
+    function pickNext() {
+      if (pool.length === 0) return null;
+      if (pool.length === 1) return pool[0];
+      let idx;
+      do { idx = Math.floor(Math.random() * pool.length); } while (idx === lastIdx);
+      lastIdx = idx;
+      return pool[idx];
+    }
+
+    function startQuestion() {
+      currentNote = pickNext();
+      if (!currentNote) return;
+      phase = 'question';
+      renderNote(currentNote);
+      clearFeedback();
+      enableButtons();
+    }
+
+    function handleAnswer(name) {
+      if (phase !== 'question') return;
+      phase = 'feedback';
+      disableButtons();
+
+      const isCorrect = name === currentNote.name;
+      document.querySelector(`.ans-btn[data-note="${name}"]`)
+        .classList.add(isCorrect ? 'correct' : 'wrong');
+      if (!isCorrect) {
+        document.querySelector(`.ans-btn[data-note="${currentNote.name}"]`)
+          .classList.add('correct');
+      }
+
+      setTimeout(() => { phase = 'idle'; startQuestion(); }, isCorrect ? 400 : 700);
+    }
+
+    function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
+    function disableButtons() { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = true); }
+    function clearFeedback()  { document.querySelectorAll('.ans-btn').forEach(b => b.classList.remove('correct', 'wrong')); }
+
+    // ── Config panel ─────────────────────────────────────────────────
+    const trebleTextarea = document.getElementById('treble-textarea');
+    const bassTextarea   = document.getElementById('bass-textarea');
+    const configPanel    = document.getElementById('config-panel');
+    const toggleBtn      = document.getElementById('toggle-btn');
+
+    function openConfig() {
+      configOpen = true;
+      configPanel.hidden = false;
+      toggleBtn.style.display = 'none';
+      phase = 'feedback';
+      disableButtons();
+      clearFeedback();
+      renderConfigView(pool);
+    }
+
+    function closeConfig() {
+      configOpen = false;
+      configPanel.hidden = true;
+      toggleBtn.style.display = '';
+      lastIdx = -1;
+      startQuestion();
+    }
+
+    function refreshPool() {
+      const parsed = [
+        ...parseClef(trebleTextarea.value, 'treble'),
+        ...parseClef(bassTextarea.value, 'bass'),
+      ];
+      if (parsed.length > 0) {
+        pool = parsed;
+        lastIdx = -1;
+        saveTexts(trebleTextarea.value, bassTextarea.value);
+        renderConfigView(pool);
+      }
+    }
+
+    let debounceTimer;
+    [trebleTextarea, bassTextarea].forEach(ta => {
+      ta.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(refreshPool, 300);
+      });
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      trebleTextarea.value = DEFAULT_TREBLE;
+      bassTextarea.value   = DEFAULT_BASS;
+      pool = [
+        ...parseClef(DEFAULT_TREBLE, 'treble'),
+        ...parseClef(DEFAULT_BASS, 'bass'),
+      ];
+      lastIdx = -1;
+      saveTexts(DEFAULT_TREBLE, DEFAULT_BASS);
+      renderConfigView(pool);
+    });
+
+    document.getElementById('done-btn').addEventListener('click', closeConfig);
+    toggleBtn.addEventListener('click', openConfig);
+
+    // ── Wire answer events ───────────────────────────────────────────
+    document.querySelectorAll('.ans-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleAnswer(btn.dataset.note));
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'TEXTAREA' || configOpen) return;
+      const note = e.key.toUpperCase();
+      if ('ABCDEFG'.includes(note) && note.length === 1) handleAnswer(note);
+    });
+
+    // ── Init ─────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      const saved = loadTexts();
+      trebleTextarea.value = saved.treble || DEFAULT_TREBLE;
+      bassTextarea.value   = saved.bass   || DEFAULT_BASS;
+      pool = [
+        ...parseClef(trebleTextarea.value, 'treble'),
+        ...parseClef(bassTextarea.value, 'bass'),
+      ];
+      startQuestion();
+    });
+  </script>
+</body>
+</html>
