@@ -83,6 +83,11 @@ async function init() {
     setFeedback(copyLinkBtn, 'Copied!');
   });
 
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'k') { copyKeyBtn.focus(); copyKeyBtn.click(); }
+    if (e.key === 'l') { copyLinkBtn.focus(); copyLinkBtn.click(); }
+  });
+
   document.getElementById('not-found').hidden = true;
   document.getElementById('found').hidden = false;
   copyKeyBtn.focus();
