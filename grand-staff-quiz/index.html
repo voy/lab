@@ -413,16 +413,16 @@ E4`;
 
     function startQuestion() {
       if (pool.length === 0) return;
-      if (batchIdx >= batch.length) { newBatch(); clearFeedback(); }
+      if (batchIdx >= batch.length) newBatch();
       currentNote = batch[batchIdx++];
       phase = 'question';
+      clearFeedback();
       renderBatch(batch, batchIdx - 1);
       enableButtons();
     }
 
     function handleAnswer(name) {
       if (phase !== 'question') return;
-      clearFeedback();
       phase = 'feedback';
       disableButtons();
 
