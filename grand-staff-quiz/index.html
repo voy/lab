@@ -114,6 +114,13 @@
       min-height: 16px;
     }
 
+    #midi-status {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      min-height: 16px;
+    }
+
     #toggle-btn {
       background: none;
       border: none;
@@ -248,6 +255,7 @@
       <button class="ans-btn" data-note="G">G</button>
     </div>
     <div id="pool-section">
+      <div id="midi-status"></div>
       <button id="toggle-btn">edit notes</button>
       <div id="config-panel" hidden>
         <div id="textareas-row">
@@ -635,6 +643,39 @@ E4`;
       if ('ABCDEFG'.includes(note) && note.length === 1) handleAnswer(note);
     });
 
+    // ── MIDI ─────────────────────────────────────────────────────────
+    const MIDI_NAMES = ['C',null,'D',null,'E','F',null,'G',null,'A',null,'B'];
+
+    function onMIDIMessage(e) {
+      const [status, note, velocity] = e.data;
+      if ((status & 0xf0) !== 0x90 || velocity === 0) return;
+      const name = MIDI_NAMES[note % 12];
+      if (name) handleAnswer(name);
+    }
+
+    function updateMIDIStatus(inputs) {
+      const el = document.getElementById('midi-status');
+      if (inputs.length > 0) {
+        el.textContent = '⬤ ' + inputs[0].name;
+        el.style.color = 'var(--correct)';
+      } else {
+        el.textContent = '⬤ no MIDI device';
+        el.style.color = 'var(--border)';
+      }
+    }
+
+    function initMIDI() {
+      if (!navigator.requestMIDIAccess) return;
+      navigator.requestMIDIAccess().then(access => {
+        function attach() {
+          access.inputs.forEach(input => { input.onmidimessage = onMIDIMessage; });
+          updateMIDIStatus([...access.inputs.values()]);
+        }
+        attach();
+        access.onstatechange = attach;
+      }).catch(() => {});
+    }
+
     // ── Init ─────────────────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', () => {
       const saved = loadTexts();
@@ -647,6 +688,7 @@ E4`;
       newBatch();
       updateStreak();
       startQuestion();
+      initMIDI();
     });
   </script>
 </body>
