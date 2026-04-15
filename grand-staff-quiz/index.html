@@ -88,7 +88,9 @@
       user-select: none;
       outline: none;
     }
-    .ans-btn:hover:not(:disabled) { border-color: var(--accent-dim); }
+    @media (hover: hover) {
+      .ans-btn:hover:not(:disabled) { border-color: var(--accent-dim); }
+    }
     .ans-btn:disabled { opacity: 0.5; cursor: default; }
     .ans-btn.correct { background: var(--correct);  border-color: var(--correct-dim); color: #fff; }
     .ans-btn.wrong   { background: var(--wrong);    border-color: var(--wrong-dim);   color: #fff; }
@@ -421,16 +423,32 @@ E4`;
     let bestStreak  = 0;
 
     // ── Game logic ───────────────────────────────────────────────────
-    function newBatch() {
+    const NOTE_ORDER = 'ABCDEFG';
+    function tooSimilar(a, b) {
+      if (!a || !b) return false;
+      if (a.name === b.name) return true;
+      const ai = NOTE_ORDER.indexOf(a.name), bi = NOTE_ORDER.indexOf(b.name);
+      return Math.min(Math.abs(ai - bi), 7 - Math.abs(ai - bi)) <= 1;
+    }
+
+    function newBatch(prevNote = null) {
       const size = Math.min(4, pool.length);
-      batch         = [...pool].sort(() => Math.random() - 0.5).slice(0, size);
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      batch = [];
+      let prev = prevNote;
+      const remaining = [...shuffled];
+      for (let i = 0; i < size; i++) {
+        const idx = remaining.findIndex(n => !tooSimilar(n, prev));
+        batch.push(...remaining.splice(idx !== -1 ? idx : 0, 1));
+        prev = batch[batch.length - 1];
+      }
       batchIdx      = 0;
       batchFeedback = [];
     }
 
     function startQuestion() {
       if (pool.length === 0) return;
-      if (batchIdx >= batch.length) newBatch();
+      if (batchIdx >= batch.length) newBatch(currentNote);
       currentNote = batch[batchIdx++];
       phase = 'question';
       renderBatch(batch, batchIdx - 1);
