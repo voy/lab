@@ -178,6 +178,31 @@
     #done-btn  { color: var(--text); border-color: var(--accent-dim); }
     #done-btn:hover { border-color: #58a6ff; }
 
+
+    #progress-bar {
+      width: 100%;
+      max-width: 600px;
+      height: 2px;
+      background: var(--border);
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+    #progress-bar.running {
+      opacity: 1;
+    }
+    #progress-bar::after {
+      content: '';
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: var(--accent-dim);
+    }
+    #progress-bar.running::after {
+      width: 100%;
+      transition: width 750ms linear;
+    }
+
     @media (max-width: 440px) {
       #main-area  { padding: 12px 8px 8px; }
       #controls   { padding: 8px 8px 16px; }
@@ -191,6 +216,8 @@
   <main id="main-area">
     <div id="staff-container"></div>
   </main>
+
+  <div id="progress-bar"></div>
 
   <footer id="controls">
     <div id="answer-row">
@@ -277,7 +304,7 @@ E4`;
     }
 
     // ── VexFlow constants ────────────────────────────────────────────
-    const { Renderer, Stave, StaveNote, Voice, Formatter, StaveConnector } = Vex.Flow;
+    const { Renderer, Stave, StaveNote, GhostNote, Voice, Formatter, StaveConnector } = Vex.Flow;
 
     const STAFF_WIDTH = 400;
     const STAFF_LEFT  = 56;
@@ -313,18 +340,34 @@ E4`;
       return { treble, bass };
     }
 
-    function renderNote(noteObj) {
+    function renderBatch(notes, currentIdx, feedbackColor = null) {
       staffContainer.innerHTML = '';
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
       const ctx = renderer.getContext();
-      const { treble, bass } = buildStaves(ctx, true);
+      const { treble, bass } = buildStaves(ctx, false);
 
-      const staveNote = new StaveNote({ keys: [noteObj.key], duration: 'w', clef: noteObj.clef });
-      const voice = new Voice({ num_beats: 4, beat_value: 4 });
-      voice.addTickables([staveNote]);
-      new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 8);
-      voice.draw(ctx, noteObj.clef === 'treble' ? treble : bass);
+      const COLOR_DONE     = '#bbb';
+      const COLOR_CURRENT  = '#1f6feb';
+      const COLOR_UPCOMING = '#444';
+
+      ['treble', 'bass'].forEach(clef => {
+        const tickables = notes.map((n, i) => {
+          if (n.clef === clef) {
+            const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
+            const color = i < currentIdx  ? (batchFeedback[i] ?? COLOR_DONE)
+                        : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
+                        :                   COLOR_UPCOMING;
+            sn.setStyle({ fillStyle: color, strokeStyle: color });
+            return sn;
+          }
+          return new GhostNote({ duration: 'q' });
+        });
+        const voice = new Voice({ num_beats: notes.length, beat_value: 4 });
+        voice.addTickables(tickables);
+        new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
+        voice.draw(ctx, clef === 'treble' ? treble : bass);
+      });
 
       applyViewBox();
     }
@@ -354,31 +397,32 @@ E4`;
     // ── State ────────────────────────────────────────────────────────
     let pool        = [];
     let currentNote = null;
-    let lastIdx     = -1;
+    let batch         = [];
+    let batchFeedback = [];
+    let batchIdx      = 0;
     let phase       = 'idle';
     let configOpen  = false;
 
     // ── Game logic ───────────────────────────────────────────────────
-    function pickNext() {
-      if (pool.length === 0) return null;
-      if (pool.length === 1) return pool[0];
-      let idx;
-      do { idx = Math.floor(Math.random() * pool.length); } while (idx === lastIdx);
-      lastIdx = idx;
-      return pool[idx];
+    function newBatch() {
+      const size = Math.min(4, pool.length);
+      batch         = [...pool].sort(() => Math.random() - 0.5).slice(0, size);
+      batchIdx      = 0;
+      batchFeedback = [];
     }
 
     function startQuestion() {
-      currentNote = pickNext();
-      if (!currentNote) return;
+      if (pool.length === 0) return;
+      if (batchIdx >= batch.length) { newBatch(); clearFeedback(); }
+      currentNote = batch[batchIdx++];
       phase = 'question';
-      renderNote(currentNote);
-      clearFeedback();
+      renderBatch(batch, batchIdx - 1);
       enableButtons();
     }
 
     function handleAnswer(name) {
       if (phase !== 'question') return;
+      clearFeedback();
       phase = 'feedback';
       disableButtons();
 
@@ -390,7 +434,13 @@ E4`;
           .classList.add('correct');
       }
 
-      setTimeout(() => { phase = 'idle'; startQuestion(); }, isCorrect ? 400 : 700);
+      const feedbackColor = isCorrect ? '#2ea043' : '#da3633';
+      batchFeedback[batchIdx - 1] = feedbackColor;
+      renderBatch(batch, batchIdx - 1, feedbackColor);
+
+      const lastInBatch = batchIdx >= batch.length;
+      const delay = lastInBatch ? 750 : 150;
+      setTimeout(() => { phase = 'idle'; startQuestion(); }, delay);
     }
 
     function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
@@ -417,7 +467,7 @@ E4`;
       configOpen = false;
       configPanel.hidden = true;
       toggleBtn.style.display = '';
-      lastIdx = -1;
+      newBatch();
       startQuestion();
     }
 
@@ -428,7 +478,6 @@ E4`;
       ];
       if (parsed.length > 0) {
         pool = parsed;
-        lastIdx = -1;
         saveTexts(trebleTextarea.value, bassTextarea.value);
         renderConfigView(pool);
       }
@@ -449,7 +498,6 @@ E4`;
         ...parseClef(DEFAULT_TREBLE, 'treble'),
         ...parseClef(DEFAULT_BASS, 'bass'),
       ];
-      lastIdx = -1;
       saveTexts(DEFAULT_TREBLE, DEFAULT_BASS);
       renderConfigView(pool);
     });
@@ -477,6 +525,7 @@ E4`;
         ...parseClef(trebleTextarea.value, 'treble'),
         ...parseClef(bassTextarea.value, 'bass'),
       ];
+      newBatch();
       startQuestion();
     });
   </script>
