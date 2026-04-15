@@ -69,7 +69,6 @@
     #answer-row {
       display: flex;
       gap: 8px;
-      justify-content: center;
     }
 
     .ans-btn {
@@ -79,14 +78,17 @@
       color: var(--text);
       font-size: 18px;
       font-weight: 600;
-      width: 52px;
+      flex: 1;
+      min-width: 0;
+      max-width: 64px;
       height: 52px;
       cursor: pointer;
       transition: background 0.15s, border-color 0.15s, color 0.15s;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
-      flex-shrink: 0;
+      outline: none;
     }
+    .ans-btn:focus-visible { outline: 2px solid var(--accent-dim); outline-offset: 2px; }
     .ans-btn:hover:not(:disabled) { border-color: var(--accent-dim); }
     .ans-btn:disabled { opacity: 0.5; cursor: default; }
     .ans-btn.correct { background: var(--correct);  border-color: var(--correct-dim); color: #fff; }
@@ -217,8 +219,8 @@
       #main-area  { padding: 12px 8px 8px; }
       #controls   { padding: 8px 8px 16px; }
       #staff-container { padding: 6px 6px; }
-      .ans-btn    { width: 42px; height: 42px; font-size: 16px; border-radius: 6px; }
-      #answer-row { gap: 5px; }
+      .ans-btn    { height: 44px; font-size: 16px; border-radius: 6px; }
+      #answer-row { gap: 6px; }
     }
   </style>
 </head>
