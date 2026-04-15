@@ -416,7 +416,6 @@ E4`;
       if (batchIdx >= batch.length) newBatch();
       currentNote = batch[batchIdx++];
       phase = 'question';
-      clearFeedback();
       renderBatch(batch, batchIdx - 1);
       enableButtons();
     }
@@ -424,7 +423,6 @@ E4`;
     function handleAnswer(name) {
       if (phase !== 'question') return;
       phase = 'feedback';
-      disableButtons();
 
       const isCorrect = name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
@@ -438,9 +436,8 @@ E4`;
       batchFeedback[batchIdx - 1] = feedbackColor;
       renderBatch(batch, batchIdx - 1, feedbackColor);
 
-      const lastInBatch = batchIdx >= batch.length;
-      const delay = lastInBatch ? 750 : 150;
-      setTimeout(() => { phase = 'idle'; startQuestion(); }, delay);
+      startQuestion(); // advance immediately so MIDI/keyboard can answer next note
+      setTimeout(clearFeedback, 400); // clear button colors after a short flash
     }
 
     function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
