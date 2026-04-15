@@ -533,10 +533,6 @@ E4`;
       const isCorrect = name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
-      if (!isCorrect) {
-        document.querySelector(`.ans-btn[data-note="${currentNote.name}"]`)
-          .classList.add('correct');
-      }
 
       if (isCorrect) {
         streak++;
@@ -550,8 +546,13 @@ E4`;
       batchFeedback[batchIdx - 1] = feedbackColor;
       renderBatch(batch, batchIdx - 1, feedbackColor);
 
-      startQuestion(); // advance immediately so MIDI/keyboard can answer next note
-      setTimeout(clearFeedback, 400); // clear button colors after a short flash
+      // correct: advance immediately; wrong: pause so staff note stays lit
+      if (isCorrect) {
+        startQuestion();
+      } else {
+        setTimeout(() => startQuestion(), 500);
+      }
+      setTimeout(clearFeedback, 400);
     }
 
     function updateStreak() {
