@@ -420,29 +420,87 @@ E4`;
     let batchIdx      = 0;
     let phase       = 'idle';
     let configOpen  = false;
-    let streak      = 0;
-    let bestStreak  = 0;
+    let streak          = 0;
+    let bestStreak      = 0;
+    let questionStartTime = 0;
+    let lastStepDir     = 0;
+    let lastClefRun     = 0;
 
     // ── Game logic ───────────────────────────────────────────────────
     const NOTE_ORDER = 'ABCDEFG';
-    function tooSimilar(a, b) {
-      if (!a || !b) return false;
-      if (a.name === b.name) return true;
-      const ai = NOTE_ORDER.indexOf(a.name), bi = NOTE_ORDER.indexOf(b.name);
-      return Math.min(Math.abs(ai - bi), 7 - Math.abs(ai - bi)) <= 1;
+
+    function stepDir(a, b) {
+      if (!a || !b) return 0;
+      const d = NOTE_ORDER.indexOf(b.name) - NOTE_ORDER.indexOf(a.name);
+      return (d === 1 || d === -6) ? 1 : (d === -1 || d === 6) ? -1 : 0;
+    }
+
+    function isValidNext(n, prev, lastDir) {
+      if (!prev) return true;
+      if (n.name === prev.name) return false;
+      const dir = stepDir(prev, n);
+      if (dir !== 0 && dir === lastDir) return false; // no consecutive same-direction steps
+      return true;
+    }
+
+    function isLedgerNote(n) {
+      const oct = parseInt(n.key.split('/')[1]);
+      const val = oct * 7 + 'CDEFGAB'.indexOf(n.name);
+      if (n.clef === 'treble') return val < 30 || val > 38; // outside E4–F5
+      if (n.clef === 'bass')   return val < 18 || val > 26; // outside G2–A3
+      return false;
+    }
+
+    function weightedShuffle(notes) {
+      const weighted = notes.flatMap(n => isLedgerNote(n) ? [n, n] : [n]);
+      weighted.sort(() => Math.random() - 0.5);
+      const seen = new Set();
+      return weighted.filter(n => {
+        const id = n.key + n.clef;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+    }
+
+    function lerpColor(c1, c2, t) {
+      const h = s => parseInt(s, 16);
+      const lerp = (a, b) => Math.round(a + (b - a) * t);
+      const r = lerp(h(c1.slice(1,3)), h(c2.slice(1,3)));
+      const g = lerp(h(c1.slice(3,5)), h(c2.slice(3,5)));
+      const b = lerp(h(c1.slice(5,7)), h(c2.slice(5,7)));
+      return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
+    }
+
+    function responseColor(isCorrect, ms) {
+      const t = Math.min(ms / 4000, 1);
+      return isCorrect ? lerpColor('#2ea043', '#74b374', t)
+                       : lerpColor('#da3633', '#c97878', t);
     }
 
     function newBatch(prevNote = null) {
-      const size = Math.min(4, pool.length);
-      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      const size = Math.min(3 + Math.round(Math.random()), pool.length);
+      const shuffled = weightedShuffle(pool);
       batch = [];
       let prev = prevNote;
+      let lastDir = lastStepDir;
+      let clefRun = lastClefRun;
       const remaining = [...shuffled];
       for (let i = 0; i < size; i++) {
-        const idx = remaining.findIndex(n => !tooSimilar(n, prev));
-        batch.push(...remaining.splice(idx !== -1 ? idx : 0, 1));
-        prev = batch[batch.length - 1];
+        const mustSwitch = prev && clefRun >= 2;
+        let idx = mustSwitch
+          ? remaining.findIndex(n => isValidNext(n, prev, lastDir) && n.clef !== prev.clef)
+          : remaining.findIndex(n => isValidNext(n, prev, lastDir));
+        if (idx === -1) idx = remaining.findIndex(n => isValidNext(n, prev, lastDir));
+        if (idx === -1) idx = 0;
+        const [chosen] = remaining.splice(idx, 1);
+        batch.push(chosen);
+        clefRun = prev && chosen.clef === prev.clef ? clefRun + 1 : 1;
+        lastDir = stepDir(prev, chosen);
+        prev = chosen;
       }
+      lastStepDir  = lastDir;
+      lastClefRun  = clefRun;
       batchIdx      = 0;
       batchFeedback = [];
     }
@@ -456,13 +514,15 @@ E4`;
           currentNote = batch[batchIdx++];
           phase = 'question';
           renderBatch(batch, batchIdx - 1);
+          questionStartTime = Date.now();
           enableButtons();
-        }, 900);
+        }, 700);
         return;
       }
       currentNote = batch[batchIdx++];
       phase = 'question';
       renderBatch(batch, batchIdx - 1);
+      questionStartTime = Date.now();
       enableButtons();
     }
 
@@ -486,7 +546,7 @@ E4`;
       }
       updateStreak();
 
-      const feedbackColor = isCorrect ? '#74b374' : '#c97878';
+      const feedbackColor = responseColor(isCorrect, Date.now() - questionStartTime);
       batchFeedback[batchIdx - 1] = feedbackColor;
       renderBatch(batch, batchIdx - 1, feedbackColor);
 
@@ -523,6 +583,8 @@ E4`;
       configOpen = false;
       configPanel.hidden = true;
       toggleBtn.style.display = '';
+      lastStepDir = 0;
+      lastClefRun = 0;
       newBatch();
       startQuestion();
     }
