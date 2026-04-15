@@ -389,29 +389,51 @@ E4`;
       const COLOR_CURRENT  = '#000';
       const COLOR_UPCOMING = '#ccc';
 
+      // Safe on-staff pitch per clef — no ledger lines, used as invisible placeholder
+      // so ghost notes don't bleed ledger lines (rgba(0,0,0,0) doesn't suppress them in VexFlow)
+      const SAFE_KEY = { treble: 'b/4', bass: 'b/2' };
+
       ['treble', 'bass'].forEach(clef => {
-        const tickables = notes.map((n, i) => {
-          // Wrong note overlay: replace the beat slot with the actual wrong note in red
-          if (wrongNoteOverlay && i === wrongNoteOverlay.idx && wrongNoteOverlay.note.clef === clef) {
-            const sn = new StaveNote({ keys: [wrongNoteOverlay.note.key], duration: 'q', clef });
-            sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
-            return sn;
-          }
+        const mainTickables = notes.map((n, i) => {
           if (n.clef === clef) {
-            if (batchFeedback[i] === 'ghost') return new GhostNote({ duration: 'q' });
-            const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
-            const color = i < currentIdx  ? (focusMode ? '#ddd' : (batchFeedback[i] ?? COLOR_DONE))
-                        : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
-                        :                   (focusMode ? '#ddd' : COLOR_UPCOMING);
+            const isGhost = batchFeedback[i] === 'ghost';
+            // Ghost state: use an on-staff pitch so there are no ledger lines to bleed through
+            const sn = new StaveNote({ keys: [isGhost ? SAFE_KEY[clef] : n.key], duration: 'q', clef });
+            const color = isGhost
+              ? 'rgba(0,0,0,0)'
+              : i < currentIdx  ? (focusMode ? '#ddd' : (batchFeedback[i] ?? COLOR_DONE))
+              : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
+              :                   (focusMode ? '#ddd' : COLOR_UPCOMING);
             sn.setStyle({ fillStyle: color, strokeStyle: color });
             return sn;
           }
           return new GhostNote({ duration: 'q' });
         });
-        const voice = new Voice({ num_beats: notes.length, beat_value: 4 });
-        voice.addTickables(tickables);
-        new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
-        voice.draw(ctx, clef === 'treble' ? treble : bass);
+
+        const mainVoice = new Voice({ num_beats: notes.length, beat_value: 4 });
+        mainVoice.addTickables(mainTickables);
+        // Always format main voice alone — voice count never changes, so no layout shift
+        new Formatter().joinVoices([mainVoice]).format([mainVoice], STAVE_WIDTH - 20);
+        mainVoice.draw(ctx, clef === 'treble' ? treble : bass);
+
+        // Wrong-note pass: independent formatter with same note structure → same x positions
+        if (notes.some((_, i) => batchWrongNotes[i]?.clef === clef)) {
+          const wrongTickables = notes.map((n, i) => {
+            if (batchWrongNotes[i]?.clef === clef) {
+              const sn = new StaveNote({ keys: [batchWrongNotes[i].key], duration: 'q', clef });
+              sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
+              return sn;
+            }
+            // Placeholder: on-staff pitch → no ledger bleed
+            const sn = new StaveNote({ keys: [SAFE_KEY[clef]], duration: 'q', clef });
+            sn.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
+            return sn;
+          });
+          const wrongVoice = new Voice({ num_beats: notes.length, beat_value: 4 });
+          wrongVoice.addTickables(wrongTickables);
+          new Formatter().joinVoices([wrongVoice]).format([wrongVoice], STAVE_WIDTH - 20);
+          wrongVoice.draw(ctx, clef === 'treble' ? treble : bass);
+        }
       });
 
       applyViewBox();
@@ -480,8 +502,7 @@ E4`;
     let questionStartTime = 0;
     let lastStepDir     = 0;
     let lastClefRun     = 0;
-    let wrongNoteOverlay  = null; // { note, idx } — red overlay after wrong answer
-    let wrongOverlayTimer = null;
+    let batchWrongNotes = []; // persists red wrong-note per batch index for MIDI wrong answers
 
     // ── Game logic ───────────────────────────────────────────────────
     const NOTE_ORDER = 'ABCDEFG';
@@ -536,8 +557,7 @@ E4`;
     }
 
     function newBatch(prevNote = null) {
-      wrongNoteOverlay = null;
-      if (wrongOverlayTimer) { clearTimeout(wrongOverlayTimer); wrongOverlayTimer = null; }
+      batchWrongNotes = [];
       const size = Math.min(3 + Math.round(Math.random()), pool.length);
       const shuffled = weightedShuffle(pool);
       batch = [];
@@ -589,9 +609,6 @@ E4`;
       if (phase !== 'question') return;
       phase = 'feedback';
 
-      // Cancel any pending wrong-note overlay from the previous answer
-      wrongNoteOverlay = null;
-      if (wrongOverlayTimer) { clearTimeout(wrongOverlayTimer); wrongOverlayTimer = null; }
 
       const isCorrect = key !== null ? key === currentNote.key : name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
@@ -614,22 +631,13 @@ E4`;
         const wrongIdx = batchIdx - 1;
 
         if (key !== null) {
-          // MIDI: show amber at correct position, then after 400ms ghost it and
-          // show red at the actual pitch played
-          batchFeedback[wrongIdx] = '#e09000';
-          renderBatch(batch, wrongIdx, '#e09000'); // visible during last-note pause
+          // MIDI: immediately ghost the correct note and show red at the played position
+          const wrongOctave = parseInt(key.split('/')[1]);
+          const noteVal     = wrongOctave * 7 + 'CDEFGAB'.indexOf(name);
+          batchFeedback[wrongIdx]    = 'ghost';
+          batchWrongNotes[wrongIdx]  = { key, name, clef: noteVal >= 28 ? 'treble' : 'bass' };
+          renderBatch(batch, wrongIdx); // visible during last-note pause
           startQuestion();
-          const wrongOctave   = parseInt(key.split('/')[1]);
-          const noteVal       = wrongOctave * 7 + 'CDEFGAB'.indexOf(name);
-          const wrongNote     = { key, name, clef: noteVal >= 28 ? 'treble' : 'bass' };
-          const capturedBatch = batch;
-          wrongOverlayTimer = setTimeout(() => {
-            wrongOverlayTimer = null;
-            if (batch !== capturedBatch) return;
-            batchFeedback[wrongIdx] = 'ghost';
-            wrongNoteOverlay = { note: wrongNote, idx: wrongIdx };
-            renderBatch(batch, batchIdx - 1);
-          }, 400);
         } else {
           // Button press: mark the note red immediately at its position
           batchFeedback[wrongIdx] = '#da3633';
@@ -719,6 +727,21 @@ E4`;
       if (e.target.tagName === 'TEXTAREA' || configOpen) return;
       const note = e.key.toUpperCase();
       if ('ABCDEFG'.includes(note) && note.length === 1) handleAnswer(note);
+      // ` — simulate a wrong MIDI answer: same note name, one octave up
+      if (e.key === '`' && currentNote) {
+        const octave = parseInt(currentNote.key.split('/')[1]) + 1;
+        handleAnswer(currentNote.name, `${currentNote.name.toLowerCase()}/${octave}`);
+      }
+      // \ — force a batch of C4 treble notes for testing
+      if (e.key === '\\') {
+        const c4 = () => ({ key: 'c/4', clef: 'treble', name: 'C' });
+        batch = [c4(), c4(), c4(), c4()];
+        batchFeedback = [];
+        batchWrongNotes = [];
+        batchIdx = 0;
+        phase = 'question';
+        startQuestion();
+      }
     });
 
     // ── MIDI ─────────────────────────────────────────────────────────
