@@ -465,8 +465,8 @@ E4`;
     }
 
     function updateStreak() {
-      document.getElementById('streak-current').textContent = streak > 0 ? `streak: ${streak}` : '';
-      document.getElementById('streak-best').textContent    = bestStreak > 0 ? `best: ${bestStreak}` : '';
+      document.getElementById('streak-current').textContent = `current streak: ${streak}`;
+      document.getElementById('streak-best').textContent    = `best streak: ${bestStreak}`;
     }
 
     function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
@@ -552,6 +552,7 @@ E4`;
         ...parseClef(bassTextarea.value, 'bass'),
       ];
       newBatch();
+      updateStreak();
       startQuestion();
     });
   </script>
