@@ -100,7 +100,10 @@
       padding-top: 4px;
     }
 
-    #streak {
+    #streak-row {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
       font-size: 11px;
       color: var(--muted);
       letter-spacing: 0.05em;
@@ -221,6 +224,10 @@
 </head>
 <body>
   <main id="main-area">
+    <div id="streak-row">
+      <span id="streak-current"></span>
+      <span id="streak-best"></span>
+    </div>
     <div id="staff-container"></div>
   </main>
 
@@ -237,7 +244,6 @@
       <button class="ans-btn" data-note="G">G</button>
     </div>
     <div id="pool-section">
-      <div id="streak"></div>
       <button id="toggle-btn">edit notes</button>
       <div id="config-panel" hidden>
         <div id="textareas-row">
@@ -444,11 +450,11 @@ E4`;
 
       if (isCorrect) {
         streak++;
-        if (streak > bestStreak) { bestStreak = streak; updateStreak(); }
+        if (streak > bestStreak) bestStreak = streak;
       } else {
         streak = 0;
-        updateStreak();
       }
+      updateStreak();
 
       const feedbackColor = isCorrect ? '#74b374' : '#c97878';
       batchFeedback[batchIdx - 1] = feedbackColor;
@@ -459,8 +465,8 @@ E4`;
     }
 
     function updateStreak() {
-      const el = document.getElementById('streak');
-      el.textContent = bestStreak > 0 ? `best streak: ${bestStreak}` : '';
+      document.getElementById('streak-current').textContent = streak > 0 ? `streak: ${streak}` : '';
+      document.getElementById('streak-best').textContent    = bestStreak > 0 ? `best: ${bestStreak}` : '';
     }
 
     function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
