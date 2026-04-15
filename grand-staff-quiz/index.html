@@ -347,9 +347,9 @@ E4`;
       const ctx = renderer.getContext();
       const { treble, bass } = buildStaves(ctx, false);
 
-      const COLOR_DONE     = '#bbb';
-      const COLOR_CURRENT  = '#1f6feb';
-      const COLOR_UPCOMING = '#444';
+      const COLOR_DONE     = '#ccc';
+      const COLOR_CURRENT  = '#000';
+      const COLOR_UPCOMING = '#ccc';
 
       ['treble', 'bass'].forEach(clef => {
         const tickables = notes.map((n, i) => {
@@ -432,7 +432,7 @@ E4`;
           .classList.add('correct');
       }
 
-      const feedbackColor = isCorrect ? '#2ea043' : '#da3633';
+      const feedbackColor = isCorrect ? '#74b374' : '#c97878';
       batchFeedback[batchIdx - 1] = feedbackColor;
       renderBatch(batch, batchIdx - 1, feedbackColor);
 
