@@ -69,6 +69,7 @@
     #answer-row {
       display: flex;
       gap: 8px;
+      justify-content: center;
     }
 
     .ans-btn {
@@ -456,7 +457,7 @@ E4`;
           phase = 'question';
           renderBatch(batch, batchIdx - 1);
           enableButtons();
-        }, 1800);
+        }, 900);
         return;
       }
       currentNote = batch[batchIdx++];
