@@ -179,6 +179,18 @@
     }
     .clef-textarea:focus { border-color: var(--accent-dim); }
 
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .setting-row input[type="checkbox"] { cursor: pointer; accent-color: var(--accent-dim); }
+
+
     #config-btns {
       display: flex;
       gap: 8px;
@@ -366,7 +378,7 @@ E4`;
       return { treble, bass };
     }
 
-    function renderBatch(notes, currentIdx, feedbackColor = null) {
+    function renderBatch(notes, currentIdx, feedbackColor = null, focusMode = false) {
       staffContainer.innerHTML = '';
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
@@ -379,11 +391,18 @@ E4`;
 
       ['treble', 'bass'].forEach(clef => {
         const tickables = notes.map((n, i) => {
+          // Wrong note overlay: replace the beat slot with the actual wrong note in red
+          if (wrongNoteOverlay && i === wrongNoteOverlay.idx && wrongNoteOverlay.note.clef === clef) {
+            const sn = new StaveNote({ keys: [wrongNoteOverlay.note.key], duration: 'q', clef });
+            sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
+            return sn;
+          }
           if (n.clef === clef) {
+            if (batchFeedback[i] === 'ghost') return new GhostNote({ duration: 'q' });
             const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
-            const color = i < currentIdx  ? (batchFeedback[i] ?? COLOR_DONE)
+            const color = i < currentIdx  ? (focusMode ? '#ddd' : (batchFeedback[i] ?? COLOR_DONE))
                         : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
-                        :                   COLOR_UPCOMING;
+                        :                   (focusMode ? '#ddd' : COLOR_UPCOMING);
             sn.setStyle({ fillStyle: color, strokeStyle: color });
             return sn;
           }
@@ -395,6 +414,34 @@ E4`;
         voice.draw(ctx, clef === 'treble' ? treble : bass);
       });
 
+      applyViewBox();
+    }
+
+
+    function renderComparison(correctNote, wrongNote) {
+      staffContainer.innerHTML = '';
+      const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
+      renderer.resize(STAFF_WIDTH, 265);
+      const ctx = renderer.getContext();
+      const { treble, bass } = buildStaves(ctx, false);
+      ['treble', 'bass'].forEach(clef => {
+        const sns = [];
+        if (correctNote.clef === clef) {
+          const sn = new StaveNote({ keys: [correctNote.key], duration: 'q', clef });
+          sn.setStyle({ fillStyle: '#e09000', strokeStyle: '#e09000' });
+          sns.push(sn);
+        }
+        if (wrongNote?.clef === clef) {
+          const sn = new StaveNote({ keys: [wrongNote.key], duration: 'q', clef });
+          sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
+          sns.push(sn);
+        }
+        if (sns.length === 0) return;
+        const voice = new Voice({ num_beats: sns.length, beat_value: 4 });
+        voice.addTickables(sns);
+        new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
+        voice.draw(ctx, clef === 'treble' ? treble : bass);
+      });
       applyViewBox();
     }
 
@@ -433,6 +480,8 @@ E4`;
     let questionStartTime = 0;
     let lastStepDir     = 0;
     let lastClefRun     = 0;
+    let wrongNoteOverlay  = null; // { note, idx } — red overlay after wrong answer
+    let wrongOverlayTimer = null;
 
     // ── Game logic ───────────────────────────────────────────────────
     const NOTE_ORDER = 'ABCDEFG';
@@ -487,6 +536,8 @@ E4`;
     }
 
     function newBatch(prevNote = null) {
+      wrongNoteOverlay = null;
+      if (wrongOverlayTimer) { clearTimeout(wrongOverlayTimer); wrongOverlayTimer = null; }
       const size = Math.min(3 + Math.round(Math.random()), pool.length);
       const shuffled = weightedShuffle(pool);
       batch = [];
@@ -538,6 +589,10 @@ E4`;
       if (phase !== 'question') return;
       phase = 'feedback';
 
+      // Cancel any pending wrong-note overlay from the previous answer
+      wrongNoteOverlay = null;
+      if (wrongOverlayTimer) { clearTimeout(wrongOverlayTimer); wrongOverlayTimer = null; }
+
       const isCorrect = key !== null ? key === currentNote.key : name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
@@ -550,16 +605,39 @@ E4`;
       }
       updateStreak();
 
-      const feedbackColor = responseColor(isCorrect, Date.now() - questionStartTime);
-      batchFeedback[batchIdx - 1] = feedbackColor;
-      renderBatch(batch, batchIdx - 1, feedbackColor);
-
-      // correct: advance immediately; wrong: pause so staff note stays lit
       if (isCorrect) {
+        const feedbackColor = responseColor(true, Date.now() - questionStartTime);
+        batchFeedback[batchIdx - 1] = feedbackColor;
+        renderBatch(batch, batchIdx - 1, feedbackColor); // visible during last-note pause
         startQuestion();
       } else {
-        setTimeout(() => startQuestion(), 500);
+        const wrongIdx = batchIdx - 1;
+
+        if (key !== null) {
+          // MIDI: show amber at correct position, then after 400ms ghost it and
+          // show red at the actual pitch played
+          batchFeedback[wrongIdx] = '#e09000';
+          renderBatch(batch, wrongIdx, '#e09000'); // visible during last-note pause
+          startQuestion();
+          const wrongOctave   = parseInt(key.split('/')[1]);
+          const noteVal       = wrongOctave * 7 + 'CDEFGAB'.indexOf(name);
+          const wrongNote     = { key, name, clef: noteVal >= 28 ? 'treble' : 'bass' };
+          const capturedBatch = batch;
+          wrongOverlayTimer = setTimeout(() => {
+            wrongOverlayTimer = null;
+            if (batch !== capturedBatch) return;
+            batchFeedback[wrongIdx] = 'ghost';
+            wrongNoteOverlay = { note: wrongNote, idx: wrongIdx };
+            renderBatch(batch, batchIdx - 1);
+          }, 400);
+        } else {
+          // Button press: mark the note red immediately at its position
+          batchFeedback[wrongIdx] = '#da3633';
+          renderBatch(batch, wrongIdx, '#da3633'); // visible during last-note pause
+          startQuestion();
+        }
       }
+
       setTimeout(clearFeedback, 400);
     }
 
@@ -646,24 +724,31 @@ E4`;
     // ── MIDI ─────────────────────────────────────────────────────────
     const MIDI_NAMES = ['C',null,'D',null,'E','F',null,'G',null,'A',null,'B'];
 
+    let lastMidiNote = -1, lastMidiTime = 0;
+
     function onMIDIMessage(e) {
       const [status, note, velocity] = e.data;
       if ((status & 0xf0) !== 0x90 || velocity === 0) return;
       const name = MIDI_NAMES[note % 12];
       if (!name) return;
+      const now = Date.now();
+      if (note === lastMidiNote && now - lastMidiTime < 400) return;
+      lastMidiNote = note; lastMidiTime = now;
       const octave = Math.floor(note / 12) - 1;
       handleAnswer(name, `${name.toLowerCase()}/${octave}`);
     }
 
     function updateMIDIStatus(inputs) {
       const el = document.getElementById('midi-status');
-      if (inputs.length > 0) {
+      const connected = inputs.length > 0;
+      if (connected) {
         el.textContent = '⬤ ' + inputs[0].name;
         el.style.color = 'var(--correct)';
       } else {
         el.textContent = '⬤ no MIDI device';
         el.style.color = 'var(--border)';
       }
+      document.getElementById('answer-row').style.display = connected ? 'none' : '';
     }
 
     function initMIDI() {
