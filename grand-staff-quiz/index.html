@@ -448,7 +448,17 @@ E4`;
 
     function startQuestion() {
       if (pool.length === 0) return;
-      if (batchIdx >= batch.length) newBatch(currentNote);
+      if (batchIdx >= batch.length) {
+        disableButtons();
+        setTimeout(() => {
+          newBatch(currentNote);
+          currentNote = batch[batchIdx++];
+          phase = 'question';
+          renderBatch(batch, batchIdx - 1);
+          enableButtons();
+        }, 1800);
+        return;
+      }
       currentNote = batch[batchIdx++];
       phase = 'question';
       renderBatch(batch, batchIdx - 1);
