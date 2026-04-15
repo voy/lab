@@ -534,11 +534,11 @@ E4`;
       enableButtons();
     }
 
-    function handleAnswer(name) {
+    function handleAnswer(name, key = null) {
       if (phase !== 'question') return;
       phase = 'feedback';
 
-      const isCorrect = name === currentNote.name;
+      const isCorrect = key !== null ? key === currentNote.key : name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
 
@@ -650,7 +650,9 @@ E4`;
       const [status, note, velocity] = e.data;
       if ((status & 0xf0) !== 0x90 || velocity === 0) return;
       const name = MIDI_NAMES[note % 12];
-      if (name) handleAnswer(name);
+      if (!name) return;
+      const octave = Math.floor(note / 12) - 1;
+      handleAnswer(name, `${name.toLowerCase()}/${octave}`);
     }
 
     function updateMIDIStatus(inputs) {
