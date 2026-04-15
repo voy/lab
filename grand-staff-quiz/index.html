@@ -100,6 +100,13 @@
       padding-top: 4px;
     }
 
+    #streak {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      min-height: 16px;
+    }
+
     #toggle-btn {
       background: none;
       border: none;
@@ -230,6 +237,7 @@
       <button class="ans-btn" data-note="G">G</button>
     </div>
     <div id="pool-section">
+      <div id="streak"></div>
       <button id="toggle-btn">edit notes</button>
       <div id="config-panel" hidden>
         <div id="textareas-row">
@@ -402,6 +410,8 @@ E4`;
     let batchIdx      = 0;
     let phase       = 'idle';
     let configOpen  = false;
+    let streak      = 0;
+    let bestStreak  = 0;
 
     // ── Game logic ───────────────────────────────────────────────────
     function newBatch() {
@@ -432,12 +442,25 @@ E4`;
           .classList.add('correct');
       }
 
+      if (isCorrect) {
+        streak++;
+        if (streak > bestStreak) { bestStreak = streak; updateStreak(); }
+      } else {
+        streak = 0;
+        updateStreak();
+      }
+
       const feedbackColor = isCorrect ? '#74b374' : '#c97878';
       batchFeedback[batchIdx - 1] = feedbackColor;
       renderBatch(batch, batchIdx - 1, feedbackColor);
 
       startQuestion(); // advance immediately so MIDI/keyboard can answer next note
       setTimeout(clearFeedback, 400); // clear button colors after a short flash
+    }
+
+    function updateStreak() {
+      const el = document.getElementById('streak');
+      el.textContent = bestStreak > 0 ? `best streak: ${bestStreak}` : '';
     }
 
     function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
