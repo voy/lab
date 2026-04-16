@@ -321,8 +321,8 @@
 <body>
   <main id="main-area">
     <div id="streak-row">
+      <span id="accuracy"></span>
       <span id="streak-current"></span>
-      <span id="streak-best"></span>
     </div>
     <div id="staff-container"></div>
   </main>
@@ -611,7 +611,8 @@ function renderConfigView(notes) {
     let phase       = 'idle';
     let configOpen  = false;
     let streak          = 0;
-    let bestStreak      = 0;
+    const ACCURACY_WINDOW = 20;
+    let answerHistory   = [];
 
     let lastStepDir     = 0;
     let lastClefRun     = 0;
@@ -711,9 +712,10 @@ function renderConfigView(notes) {
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
 
+      answerHistory.push(isCorrect);
+      if (answerHistory.length > ACCURACY_WINDOW) answerHistory.shift();
       if (isCorrect) {
         streak++;
-        if (streak > bestStreak) bestStreak = streak;
       } else {
         streak = 0;
       }
@@ -737,8 +739,12 @@ function renderConfigView(notes) {
     }
 
     function updateStreak() {
-      document.getElementById('streak-current').textContent = `current streak: ${streak}`;
-      document.getElementById('streak-best').textContent    = `best streak: ${bestStreak}`;
+      const n       = answerHistory.length;
+      const correct = answerHistory.filter(Boolean).length;
+      const pct     = n === 0 ? '—' : Math.round(correct / n * 100) + '%';
+      const label   = n < ACCURACY_WINDOW ? `${correct}/${n}` : 'last 20';
+      document.getElementById('accuracy').textContent       = `accuracy: ${pct} (${label})`;
+      document.getElementById('streak-current').textContent = `streak: ${streak}`;
     }
 
     function enableButtons()  { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = false); }
