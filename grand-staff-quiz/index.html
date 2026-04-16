@@ -474,15 +474,13 @@ E4`;
 
     let trebleStave = null, bassStave = null;
 
-    function buildStaves(ctx, withTimeSig = true) {
+    function buildStaves(ctx) {
       const treble = new Stave(STAFF_LEFT, TREBLE_Y, STAVE_WIDTH);
       treble.addClef('treble');
-      if (withTimeSig) treble.addTimeSignature('4/4');
       treble.setContext(ctx).draw();
 
       const bass = new Stave(STAFF_LEFT, BASS_Y, STAVE_WIDTH);
       bass.addClef('bass');
-      if (withTimeSig) bass.addTimeSignature('4/4');
       bass.setContext(ctx).draw();
 
       new StaveConnector(treble, bass).setType(StaveConnector.type.BRACE).setContext(ctx).draw();
@@ -555,7 +553,7 @@ E4`;
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
       const ctx = renderer.getContext();
-      const { treble, bass } = buildStaves(ctx, false);
+      const { treble, bass } = buildStaves(ctx);
 
       const COLOR_DONE    = '#ccc';
       const COLOR_CURRENT = '#000';
@@ -600,12 +598,12 @@ E4`;
     }
 
 
-function renderConfigView(notes) {
+    function renderConfigView(notes) {
       staffContainer.innerHTML = '';
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
       const ctx = renderer.getContext();
-      const { treble, bass } = buildStaves(ctx, false);
+      const { treble, bass } = buildStaves(ctx);
 
       try {
         ['treble', 'bass'].forEach(clef => {
@@ -851,20 +849,6 @@ function renderConfigView(notes) {
       if (e.target.tagName === 'TEXTAREA' || configOpen) return;
       const note = e.key.toUpperCase();
       if ('ABCDEFG'.includes(note) && note.length === 1) handleAnswer(note);
-      // ` — simulate a wrong MIDI answer: same note name, one octave up
-      if (e.key === '`' && currentNote) {
-        const octave = parseInt(currentNote.key.split('/')[1]) + 1;
-        handleAnswer(currentNote.name, `${currentNote.name.toLowerCase()}/${octave}`);
-      }
-      // \ — force a batch of C4 treble notes for testing
-      if (e.key === '\\') {
-        const c4 = () => ({ key: 'c/4', clef: 'treble', name: 'C' });
-        batch = [c4(), c4(), c4(), c4()];
-        batchFeedback = [];
-        batchIdx = 0;
-        phase = 'question';
-        startQuestion();
-      }
     });
 
     // ── MIDI ─────────────────────────────────────────────────────────
