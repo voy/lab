@@ -69,6 +69,45 @@ function buildBatch(shuffled, prevNote, lastDir, clefRun, size) {
   return { batch, lastDir: dir, clefRun: run };
 }
 
+const INTERVAL_PROB = 0.20;
+
+function pitchVal(note) {
+  return parseInt(note.key.split('/')[1]) * 7 + 'CDEFGAB'.indexOf(note.name);
+}
+
+function addIntervals(notes, poolSize, rand = Math.random) {
+  if (poolSize < 8) return notes;
+  const out = [];
+  let i = 0;
+  let hadInterval = false;
+  while (i < notes.length) {
+    const a = notes[i], b = notes[i + 1];
+    if (b && a.clef === b.clef && rand() < INTERVAL_PROB) {
+      const [lower, upper] = pitchVal(a) <= pitchVal(b) ? [a, b] : [b, a];
+      const upperFirst = rand() >= 0.5;
+      out.push(upperFirst ? upper : lower);
+      out.push(upperFirst ? lower : upper);
+      i += 2;
+      hadInterval = true;
+    } else {
+      out.push(a);
+      i++;
+    }
+  }
+  if (!hadInterval) {
+    for (let j = 0; j < out.length - 1; j++) {
+      if (out[j].clef === out[j + 1].clef) {
+        const [lower, upper] = pitchVal(out[j]) <= pitchVal(out[j + 1]) ? [out[j], out[j + 1]] : [out[j + 1], out[j]];
+        const upperFirst = rand() >= 0.5;
+        out[j]     = upperFirst ? upper : lower;
+        out[j + 1] = upperFirst ? lower : upper;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch };
+  module.exports = { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals };
 }
