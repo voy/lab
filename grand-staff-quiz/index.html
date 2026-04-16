@@ -527,12 +527,18 @@ E4`;
     showStatsCheck.addEventListener('change', applyShowStats);
     applyShowStats();
 
+    let midiConnected = false;
+    function updateAnswerRowVisibility() {
+      document.getElementById('answer-row').style.display =
+        (midiConnected || clickClefCheck.checked) ? 'none' : '';
+    }
+
     const clickClefCheck = document.getElementById('click-clef-check');
     clickClefCheck.checked = localStorage.getItem('click-clef') === 'true';
     function applyClickClef() {
       localStorage.setItem('click-clef', clickClefCheck.checked);
       staffContainer.style.cursor = clickClefCheck.checked ? 'crosshair' : 'default';
-      document.getElementById('answer-row').style.display = clickClefCheck.checked ? 'none' : '';
+      updateAnswerRowVisibility();
     }
     clickClefCheck.addEventListener('change', applyClickClef);
     applyClickClef();
@@ -882,11 +888,11 @@ E4`;
     function updateMIDIStatus(inputs) {
       const btn  = document.getElementById('midi-connect-btn');
       const name = document.getElementById('midi-name');
-      const connected = inputs.length > 0;
-      btn.hidden  = connected;
-      name.hidden = !connected;
-      if (connected) name.textContent = '⬤ ' + inputs[0].name;
-      document.getElementById('answer-row').style.display = connected ? 'none' : '';
+      midiConnected = inputs.length > 0;
+      btn.hidden  = midiConnected;
+      name.hidden = !midiConnected;
+      if (midiConnected) name.textContent = '⬤ ' + inputs[0].name;
+      updateAnswerRowVisibility();
     }
 
     function initMIDI() {
