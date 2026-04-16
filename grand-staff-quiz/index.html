@@ -405,7 +405,7 @@
           <input type="checkbox" id="show-stats-check"> Show performance stats
         </label>
         <div class="setting-row">
-          <input type="number" id="batch-size-input" min="1" max="12" value="4"> Notes per batch
+          <input type="number" id="batch-size-input" min="1" max="16" value="4"> Notes per batch
         </div>
       </div>
 
@@ -471,17 +471,20 @@ E4`;
     // ── VexFlow constants ────────────────────────────────────────────
     const { Renderer, Stave, StaveNote, GhostNote, Voice, Formatter, StaveConnector } = Vex.Flow;
 
-    const STAFF_WIDTH = 400;
-    const STAFF_LEFT  = 56;
-    const STAVE_WIDTH = STAFF_WIDTH - STAFF_LEFT - 8;
-    const TREBLE_Y    = 35;
-    const BASS_Y      = 185;
+    const STAFF_WIDTH   = 400;
+    const STAFF_LEFT    = 56;
+    const STAVE_WIDTH   = STAFF_WIDTH - STAFF_LEFT - 8;
+    const TREBLE_Y      = 35;
+    const BASS_Y        = 185;
+    const NOTES_PER_BAR = 4;
+    const BAR_WIDTH     = 180; // stave width per bar (note area); first bar prepends STAFF_LEFT
 
     const staffContainer = document.getElementById('staff-container');
 
     function applyViewBox() {
       const svg = staffContainer.querySelector('svg');
-      svg.setAttribute('viewBox', '10 45 400 240');
+      const w = parseFloat(svg.getAttribute('width')) || STAFF_WIDTH;
+      svg.setAttribute('viewBox', `35 45 ${w - 35} 240`);
       svg.removeAttribute('width');
       svg.removeAttribute('height');
       svg.style.width = '100%';
@@ -534,9 +537,12 @@ E4`;
     const batchSizeInput = document.getElementById('batch-size-input');
     batchSizeInput.value = localStorage.getItem('batch-size') ?? '4';
     batchSizeInput.addEventListener('change', () => {
-      const v = Math.max(1, Math.min(12, parseInt(batchSizeInput.value) || 4));
+      const v = Math.max(1, Math.min(16, parseInt(batchSizeInput.value) || 4));
       batchSizeInput.value = v;
       localStorage.setItem('batch-size', v);
+    });
+    batchSizeInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { batchSizeInput.blur(); closeSettings(); }
     });
 
     const showStatsCheck = document.getElementById('show-stats-check');
@@ -586,37 +592,77 @@ E4`;
 
     function renderBatch(notes, currentIdx, feedbackColor = null, wrongNote = null) {
       staffContainer.innerHTML = '';
+      const numBars    = Math.max(1, Math.ceil(notes.length / NOTES_PER_BAR));
+      const totalWidth = STAFF_LEFT + numBars * BAR_WIDTH;
+
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
-      renderer.resize(STAFF_WIDTH, 265);
+      renderer.resize(totalWidth, 265);
       const ctx = renderer.getContext();
-      const { treble, bass } = buildStaves(ctx);
+
+      // Build one stave pair per bar; bar 0 carries the clef and brace
+      const tStaves = [], bStaves = [];
+      for (let b = 0; b < numBars; b++) {
+        const x = STAFF_LEFT + b * BAR_WIDTH;
+        const t  = new Stave(x, TREBLE_Y, BAR_WIDTH);
+        const bs = new Stave(x, BASS_Y,   BAR_WIDTH);
+        if (b === 0) {
+          t.addClef('treble');
+          bs.addClef('bass');
+          new StaveConnector(t, bs).setType(StaveConnector.type.BRACE).setContext(ctx).draw();
+          new StaveConnector(t, bs).setType(StaveConnector.type.SINGLE).setContext(ctx).draw();
+        }
+        t.setContext(ctx).draw();
+        bs.setContext(ctx).draw();
+        tStaves.push(t);
+        bStaves.push(bs);
+      }
+      trebleStave = tStaves[0];
+      bassStave   = bStaves[0];
 
       const COLOR_DONE    = '#ccc';
       const COLOR_CURRENT = '#000';
 
-      ['treble', 'bass'].forEach(clef => {
-        const tickables = notes.map((n, i) => {
-          if (n.clef === clef) {
-            const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
-            const color = i < currentIdx  ? (batchFeedback[i] ?? COLOR_DONE)
-                        : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
-                        :                   COLOR_DONE;
-            sn.setStyle({ fillStyle: color, strokeStyle: color });
-            sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
-            return sn;
-          }
-          return new GhostNote({ duration: 'q' });
-        });
-        const voice = new Voice({ num_beats: notes.length, beat_value: 4 });
-        voice.addTickables(tickables);
-        new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
-        voice.draw(ctx, clef === 'treble' ? treble : bass);
-      });
+      for (let b = 0; b < numBars; b++) {
+        const offset   = b * NOTES_PER_BAR;
+        const raw      = notes.slice(offset, offset + NOTES_PER_BAR);
+        // Pad partial last bar with nulls so notes anchor to the left
+        const barNotes = raw.length < NOTES_PER_BAR
+          ? [...raw, ...Array(NOTES_PER_BAR - raw.length).fill(null)]
+          : raw;
+        const ts = tStaves[b];
+        const fmtW = ts.getX() + ts.getWidth() - ts.getNoteStartX() - 10;
 
-      // Wrong note: render as a second voice aligned to currentIdx
+        ['treble', 'bass'].forEach(clef => {
+          const tickables = barNotes.map((n, i) => {
+            const gi = offset + i;
+            if (n !== null && n.clef === clef) {
+              const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
+              const color = gi < currentIdx  ? (batchFeedback[gi] ?? COLOR_DONE)
+                          : gi === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
+                          :                    COLOR_DONE;
+              sn.setStyle({ fillStyle: color, strokeStyle: color });
+              sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
+              return sn;
+            }
+            return new GhostNote({ duration: 'q' });
+          });
+          const voice = new Voice({ num_beats: NOTES_PER_BAR, beat_value: 4 });
+          voice.addTickables(tickables);
+          new Formatter().joinVoices([voice]).format([voice], fmtW);
+          voice.draw(ctx, clef === 'treble' ? tStaves[b] : bStaves[b]);
+        });
+      }
+
+      // Wrong note: second voice on the same bar as currentIdx
       if (wrongNote) {
-        const tickables = notes.map((_, i) => {
-          if (i === currentIdx) {
+        const wrongBar = Math.floor(currentIdx / NOTES_PER_BAR);
+        const offset   = wrongBar * NOTES_PER_BAR;
+        const rawWrong = notes.slice(offset, offset + NOTES_PER_BAR);
+        const barNotes = rawWrong.length < NOTES_PER_BAR
+          ? [...rawWrong, ...Array(NOTES_PER_BAR - rawWrong.length).fill(null)]
+          : rawWrong;
+        const tickables = barNotes.map((_, i) => {
+          if (offset + i === currentIdx) {
             const sn = new StaveNote({ keys: [wrongNote.key], duration: 'q', clef: wrongNote.clef });
             sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
             sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
@@ -624,10 +670,12 @@ E4`;
           }
           return new GhostNote({ duration: 'q' });
         });
-        const voice = new Voice({ num_beats: notes.length, beat_value: 4 });
+        const wts  = tStaves[wrongBar];
+        const wFmtW = wts.getX() + wts.getWidth() - wts.getNoteStartX() - 10;
+        const voice = new Voice({ num_beats: NOTES_PER_BAR, beat_value: 4 });
         voice.addTickables(tickables);
-        new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
-        voice.draw(ctx, wrongNote.clef === 'treble' ? treble : bass);
+        new Formatter().joinVoices([voice]).format([voice], wFmtW);
+        voice.draw(ctx, wrongNote.clef === 'treble' ? tStaves[wrongBar] : bStaves[wrongBar]);
       }
 
       applyViewBox();
