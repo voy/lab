@@ -108,6 +108,69 @@ function addIntervals(notes, poolSize, rand = Math.random) {
   return out;
 }
 
+// Diatonic note at `steps` above the bottom line of the given clef.
+// Treble bottom line = E4, bass bottom line = G2.
+function stepToNote(steps, clef) {
+  const [base, baseOct] = clef === 'treble' ? ['E', 4] : ['G', 2];
+  const NOTE_NAMES = 'CDEFGAB';
+  const total  = NOTE_NAMES.indexOf(base) + steps;
+  const name   = NOTE_NAMES[((total % 7) + 7) % 7];
+  const octave = baseOct + Math.floor(total / 7);
+  if (octave < 0 || octave > 9) return null;
+  return { name, key: `${name.toLowerCase()}/${octave}` };
+}
+
+// MIDI note number → { name, key, clef } or null for black keys.
+// Clef split at middle C: C4 and up = treble, below = bass.
+function midiToNote(midiNumber) {
+  const NAMES = ['C',null,'D',null,'E','F',null,'G',null,'A',null,'B'];
+  const name = NAMES[midiNumber % 12];
+  if (!name) return null;
+  const octave  = Math.floor(midiNumber / 12) - 1;
+  const noteVal = octave * 7 + 'CDEFGAB'.indexOf(name);
+  const clef    = noteVal >= 28 ? 'treble' : 'bass';
+  return { name, key: `${name.toLowerCase()}/${octave}`, clef };
+}
+
+// Three-branch correctness check:
+//   key === null          → name-only match (keyboard/button input)
+//   key set, ignoreOctave → name-only match
+//   key set, strict       → exact key match (MIDI/click input at the right pitch)
+function isCorrectAnswer(name, key, currentNote, ignoreOctave) {
+  if (key !== null && !ignoreOctave) return key === currentNote.key;
+  return name === currentNote.name;
+}
+
+const ACCURACY_WINDOW = 20;
+const SPEED_WINDOW    = 20;
+const SPEED_MIN_ACC   = 0.80;
+const SPEED_MIN_N     = 3;
+
+// Display-ready stats from raw history.
+// Speed is gated: needs ≥SPEED_MIN_N samples AND ≥SPEED_MIN_ACC accuracy.
+function computeStats(answerHistory, speedHistory) {
+  const n = answerHistory.length;
+  const correct = answerHistory.filter(Boolean).length;
+  const accuracyPct   = n === 0 ? null : Math.round(correct / n * 100);
+  const accuracyLabel = n < ACCURACY_WINDOW ? `${correct}/${n}` : `last ${ACCURACY_WINDOW}`;
+
+  const accRate   = n === 0 ? 0 : correct / n;
+  const sn        = speedHistory.length;
+  const showSpeed = sn >= SPEED_MIN_N && accRate >= SPEED_MIN_ACC;
+  const speedMs   = showSpeed ? speedHistory.reduce((a, b) => a + b, 0) / sn : null;
+  const speedLabel = showSpeed
+    ? (sn < SPEED_WINDOW ? `${sn}/${SPEED_WINDOW}` : `last ${SPEED_WINDOW}`)
+    : null;
+
+  return { accuracyPct, accuracyLabel, speedMs, speedLabel };
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals };
+  module.exports = {
+    parseClef, stepDir, isValidNext, isLedgerNote,
+    weightedShuffle, buildBatch, pitchVal, addIntervals,
+    stepToNote, midiToNote,
+    isCorrectAnswer, computeStats,
+    ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N,
+  };
 }
