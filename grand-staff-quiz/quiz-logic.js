@@ -31,3 +31,39 @@ export function isLedgerNote(n) {
   if (n.clef === 'bass')   return val < 18 || val > 26; // outside G2–A3
   return false;
 }
+
+export function weightedShuffle(notes) {
+  const weighted = notes.flatMap(n => isLedgerNote(n) ? [n, n] : [n]);
+  weighted.sort(() => Math.random() - 0.5);
+  const seen = new Set();
+  return weighted.filter(n => {
+    const id = n.key + n.clef;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
+// Pure batch-selection loop. Takes an already-shuffled pool so randomness is
+// injected by the caller, making this fully testable.
+export function buildBatch(shuffled, prevNote, lastDir, clefRun, size) {
+  const batch = [];
+  let prev = prevNote;
+  let dir  = lastDir;
+  let run  = clefRun;
+  const remaining = [...shuffled];
+  for (let i = 0; i < size; i++) {
+    const mustSwitch = prev && run >= 2;
+    let idx = mustSwitch
+      ? remaining.findIndex(n => isValidNext(n, prev, dir) && n.clef !== prev.clef)
+      : remaining.findIndex(n => isValidNext(n, prev, dir));
+    if (idx === -1) idx = remaining.findIndex(n => isValidNext(n, prev, dir));
+    if (idx === -1) idx = 0;
+    const [chosen] = remaining.splice(idx, 1);
+    batch.push(chosen);
+    run = prev && chosen.clef === prev.clef ? run + 1 : 1;
+    dir = stepDir(prev, chosen);
+    prev = chosen;
+  }
+  return { batch, lastDir: dir, clefRun: run };
+}

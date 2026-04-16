@@ -408,7 +408,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js"></script>
   <script type="module">
-    import { parseClef, stepDir, isValidNext, isLedgerNote } from './quiz-logic.js';
+    import { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch } from './quiz-logic.js';
     // ── Default note pool ────────────────────────────────────────────
     const DEFAULT_TREBLE = `B3
 C4
@@ -643,43 +643,12 @@ function renderConfigView(notes) {
     let lastClefRun     = 0;
 
     // ── Game logic ───────────────────────────────────────────────────
-    function weightedShuffle(notes) {
-      const weighted = notes.flatMap(n => isLedgerNote(n) ? [n, n] : [n]);
-      weighted.sort(() => Math.random() - 0.5);
-      const seen = new Set();
-      return weighted.filter(n => {
-        const id = n.key + n.clef;
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-    }
-
-
-
     function newBatch(prevNote = null) {
       const size = Math.min(3 + Math.round(Math.random()), pool.length);
-      const shuffled = weightedShuffle(pool);
-      batch = [];
-      let prev = prevNote;
-      let lastDir = lastStepDir;
-      let clefRun = lastClefRun;
-      const remaining = [...shuffled];
-      for (let i = 0; i < size; i++) {
-        const mustSwitch = prev && clefRun >= 2;
-        let idx = mustSwitch
-          ? remaining.findIndex(n => isValidNext(n, prev, lastDir) && n.clef !== prev.clef)
-          : remaining.findIndex(n => isValidNext(n, prev, lastDir));
-        if (idx === -1) idx = remaining.findIndex(n => isValidNext(n, prev, lastDir));
-        if (idx === -1) idx = 0;
-        const [chosen] = remaining.splice(idx, 1);
-        batch.push(chosen);
-        clefRun = prev && chosen.clef === prev.clef ? clefRun + 1 : 1;
-        lastDir = stepDir(prev, chosen);
-        prev = chosen;
-      }
-      lastStepDir  = lastDir;
-      lastClefRun  = clefRun;
+      const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
+      batch         = result.batch;
+      lastStepDir   = result.lastDir;
+      lastClefRun   = result.clefRun;
       batchIdx      = 0;
       batchFeedback = [];
     }
