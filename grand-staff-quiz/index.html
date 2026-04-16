@@ -100,22 +100,67 @@
     #footer-bar {
       display: flex;
       justify-content: center;
+      gap: 8px;
       padding-top: 2px;
     }
 
-    #settings-btn {
+    #settings-btn, #toggle-btn {
       background: none;
       border: none;
       color: var(--muted);
       font-size: 12px;
       cursor: pointer;
-      padding: 6px 16px;
+      padding: 6px 12px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       text-decoration: underline;
       text-underline-offset: 4px;
     }
-    #settings-btn:hover { color: var(--text); }
+    #settings-btn:hover, #toggle-btn:hover { color: var(--text); }
+
+    #config-panel {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-top: 4px;
+    }
+    #config-panel[hidden] { display: none; }
+
+    #config-desc {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    #config-btns {
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #reset-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    #reset-btn:hover { color: var(--text); }
+    #config-done-btn {
+      background: var(--surface);
+      border: 1px solid var(--accent-dim);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 6px 20px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    #config-done-btn:hover { border-color: #58a6ff; }
 
     #streak-row {
       width: 100%;
@@ -261,18 +306,7 @@
       background: var(--surface);
       border-top: 1px solid var(--border);
     }
-    #reset-btn {
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 12px;
-      cursor: pointer;
-      padding: 0;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-    }
-    #reset-btn:hover { color: var(--text); }
-    #done-btn {
+    #modal-done-btn {
       background: var(--bg);
       border: 1px solid var(--accent-dim);
       border-radius: 6px;
@@ -282,7 +316,7 @@
       cursor: pointer;
       transition: border-color 0.15s;
     }
-    #done-btn:hover { border-color: #58a6ff; }
+    #modal-done-btn:hover { border-color: #58a6ff; }
 
 
     #progress-bar {
@@ -341,6 +375,24 @@
     </div>
     <div id="footer-bar">
       <button id="settings-btn">settings</button>
+      <button id="toggle-btn">edit notes</button>
+    </div>
+    <div id="config-panel" hidden>
+      <p id="config-desc">Choose which notes to drill. Prefix a line with # to skip it temporarily.</p>
+      <div id="textareas-row">
+        <div class="clef-editor">
+          <label for="treble-textarea">Treble</label>
+          <textarea id="treble-textarea" class="clef-textarea" spellcheck="false"></textarea>
+        </div>
+        <div class="clef-editor">
+          <label for="bass-textarea">Bass</label>
+          <textarea id="bass-textarea" class="clef-textarea" spellcheck="false"></textarea>
+        </div>
+      </div>
+      <div id="config-btns">
+        <button id="reset-btn">Reset to defaults</button>
+        <button id="config-done-btn">Done</button>
+      </div>
     </div>
   </footer>
 
@@ -366,23 +418,8 @@
         </label>
       </div>
 
-      <div class="modal-section">
-        <div class="modal-section-title">Note pool</div>
-        <div id="textareas-row">
-          <div class="clef-editor">
-            <label for="treble-textarea">Treble</label>
-            <textarea id="treble-textarea" class="clef-textarea" spellcheck="false"></textarea>
-          </div>
-          <div class="clef-editor">
-            <label for="bass-textarea">Bass</label>
-            <textarea id="bass-textarea" class="clef-textarea" spellcheck="false"></textarea>
-          </div>
-        </div>
-        <div><button id="reset-btn">Reset to defaults</button></div>
-      </div>
-
       <div id="modal-footer">
-        <button id="done-btn">Done</button>
+        <button id="modal-done-btn">Done</button>
       </div>
     </div>
   </div>
@@ -755,10 +792,31 @@ function renderConfigView(notes) {
     const trebleTextarea = document.getElementById('treble-textarea');
     const bassTextarea   = document.getElementById('bass-textarea');
     const modalBackdrop  = document.getElementById('modal-backdrop');
+    const configPanel    = document.getElementById('config-panel');
+    const toggleBtn      = document.getElementById('toggle-btn');
+
+    function openSettings() {
+      configOpen = true;
+      modalBackdrop.classList.add('open');
+      phase = 'feedback';
+      disableButtons();
+      clearFeedback();
+    }
+
+    function closeSettings() {
+      configOpen = false;
+      modalBackdrop.classList.remove('open');
+      if (!configPanel.hidden) return; // note editor still open, don't restart
+      lastStepDir = 0;
+      lastClefRun = 0;
+      newBatch();
+      startQuestion();
+    }
 
     function openConfig() {
       configOpen = true;
-      modalBackdrop.classList.add('open');
+      configPanel.hidden = false;
+      toggleBtn.style.display = 'none';
       phase = 'feedback';
       disableButtons();
       clearFeedback();
@@ -767,7 +825,8 @@ function renderConfigView(notes) {
 
     function closeConfig() {
       configOpen = false;
-      modalBackdrop.classList.remove('open');
+      configPanel.hidden = true;
+      toggleBtn.style.display = '';
       lastStepDir = 0;
       lastClefRun = 0;
       newBatch();
@@ -805,10 +864,12 @@ function renderConfigView(notes) {
       renderConfigView(pool);
     });
 
-    document.getElementById('done-btn').addEventListener('click', closeConfig);
-    document.getElementById('modal-close').addEventListener('click', closeConfig);
-    modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeConfig(); });
-    document.getElementById('settings-btn').addEventListener('click', openConfig);
+    document.getElementById('modal-done-btn').addEventListener('click', closeSettings);
+    document.getElementById('modal-close').addEventListener('click', closeSettings);
+    modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeSettings(); });
+    document.getElementById('settings-btn').addEventListener('click', openSettings);
+    document.getElementById('config-done-btn').addEventListener('click', closeConfig);
+    toggleBtn.addEventListener('click', openConfig);
 
     // ── Wire answer events ───────────────────────────────────────────
     document.querySelectorAll('.ans-btn').forEach(btn => {
@@ -816,7 +877,11 @@ function renderConfigView(notes) {
     });
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && configOpen) { closeConfig(); return; }
+      if (e.key === 'Escape' && configOpen) {
+        if (!modalBackdrop.classList.contains('open') && !configPanel.hidden) closeConfig();
+        else closeSettings();
+        return;
+      }
       if (e.target.tagName === 'TEXTAREA' || configOpen) return;
       const note = e.key.toUpperCase();
       if ('ABCDEFG'.includes(note) && note.length === 1) handleAnswer(note);
