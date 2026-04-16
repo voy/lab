@@ -1,6 +1,7 @@
-// Pure functions extracted for unit testing.
+// Pure functions. Browser: loaded as a plain script (globals).
+// Node: required by the test runner via the module.exports tail.
 
-export function parseClef(text, clef) {
+function parseClef(text, clef) {
   return text.replace(/\\n/g, '\n').split('\n')
     .map(l => l.trim())
     .filter(l => !/^(#|\/\/)/.test(l))
@@ -10,13 +11,13 @@ export function parseClef(text, clef) {
 
 const NOTE_ORDER = 'ABCDEFG';
 
-export function stepDir(a, b) {
+function stepDir(a, b) {
   if (!a || !b) return 0;
   const d = NOTE_ORDER.indexOf(b.name) - NOTE_ORDER.indexOf(a.name);
   return (d === 1 || d === -6) ? 1 : (d === -1 || d === 6) ? -1 : 0;
 }
 
-export function isValidNext(n, prev, lastDir) {
+function isValidNext(n, prev, lastDir) {
   if (!prev) return true;
   if (n.name === prev.name) return false;
   const dir = stepDir(prev, n);
@@ -24,7 +25,7 @@ export function isValidNext(n, prev, lastDir) {
   return true;
 }
 
-export function isLedgerNote(n) {
+function isLedgerNote(n) {
   const oct = parseInt(n.key.split('/')[1]);
   const val = oct * 7 + 'CDEFGAB'.indexOf(n.name);
   if (n.clef === 'treble') return val < 30 || val > 38; // outside E4–F5
@@ -32,7 +33,7 @@ export function isLedgerNote(n) {
   return false;
 }
 
-export function weightedShuffle(notes) {
+function weightedShuffle(notes) {
   const weighted = notes.flatMap(n => isLedgerNote(n) ? [n, n] : [n]);
   weighted.sort(() => Math.random() - 0.5);
   const seen = new Set();
@@ -46,7 +47,7 @@ export function weightedShuffle(notes) {
 
 // Pure batch-selection loop. Takes an already-shuffled pool so randomness is
 // injected by the caller, making this fully testable.
-export function buildBatch(shuffled, prevNote, lastDir, clefRun, size) {
+function buildBatch(shuffled, prevNote, lastDir, clefRun, size) {
   const batch = [];
   let prev = prevNote;
   let dir  = lastDir;
@@ -66,4 +67,8 @@ export function buildBatch(shuffled, prevNote, lastDir, clefRun, size) {
     prev = chosen;
   }
   return { batch, lastDir: dir, clefRun: run };
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch };
 }
