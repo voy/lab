@@ -49,6 +49,7 @@
       overflow: hidden;
       display: flex;
       justify-content: center;
+      cursor: crosshair;
     }
 
     #staff-container svg {
@@ -114,12 +115,53 @@
       min-height: 16px;
     }
 
+    #octave-row {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+    }
+
+    .oct-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      width: 36px;
+      height: 32px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      outline: none;
+    }
+    .oct-btn.selected {
+      border-color: var(--accent-dim);
+      color: var(--text);
+    }
+    @media (hover: hover) {
+      .oct-btn:hover { border-color: var(--accent-dim); color: var(--text); }
+    }
+
     #midi-status {
       font-size: 11px;
       color: var(--muted);
       letter-spacing: 0.05em;
       min-height: 16px;
     }
+
+    #midi-connect-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+    #midi-connect-btn:hover { color: var(--text); }
 
     #toggle-btn {
       background: none;
@@ -266,8 +308,17 @@
       <button class="ans-btn" data-note="F">F</button>
       <button class="ans-btn" data-note="G">G</button>
     </div>
+    <div id="octave-row">
+      <button class="oct-btn" data-oct="2">2</button>
+      <button class="oct-btn" data-oct="3">3</button>
+      <button class="oct-btn selected" data-oct="4">4</button>
+      <button class="oct-btn" data-oct="5">5</button>
+      <button class="oct-btn" data-oct="6">6</button>
+    </div>
     <div id="pool-section">
-      <div id="midi-status"></div>
+      <div id="midi-status">
+        <button id="midi-connect-btn">connect MIDI</button>
+      </div>
       <button id="toggle-btn">edit notes</button>
       <div id="config-panel" hidden>
         <div id="textareas-row">
@@ -361,6 +412,8 @@ E4`;
       svg.style.height = 'auto';
     }
 
+    let trebleStave = null, bassStave = null;
+
     function buildStaves(ctx, withTimeSig = true) {
       const treble = new Stave(STAFF_LEFT, TREBLE_Y, STAVE_WIDTH);
       treble.addClef('treble');
@@ -375,8 +428,48 @@ E4`;
       new StaveConnector(treble, bass).setType(StaveConnector.type.BRACE).setContext(ctx).draw();
       new StaveConnector(treble, bass).setType(StaveConnector.type.SINGLE).setContext(ctx).draw();
 
+      trebleStave = treble;
+      bassStave   = bass;
       return { treble, bass };
     }
+
+    // ── Staff click → note ───────────────────────────────────────────
+    // Bottom line of treble = E4, bottom line of bass = G2.
+    // Each half-space up = one diatonic step.
+    const STAFF_NOTE_NAMES = 'CDEFGAB';
+
+    function yToNote(stave, svgY, clef) {
+      const half      = stave.getSpacingBetweenLines() / 2;
+      const bottomY   = stave.getYForLine(4);
+      const steps     = Math.round((bottomY - svgY) / half);
+      const [base, baseOct] = clef === 'treble' ? ['E', 4] : ['G', 2];
+      const baseIdx   = STAFF_NOTE_NAMES.indexOf(base);
+      const total     = baseIdx + steps;
+      const name      = STAFF_NOTE_NAMES[((total % 7) + 7) % 7];
+      const octave    = baseOct + Math.floor(total / 7);
+      if (octave < 0 || octave > 9) return null;
+      return { name, key: `${name.toLowerCase()}/${octave}` };
+    }
+
+    staffContainer.addEventListener('click', e => {
+      if (phase !== 'question' || !trebleStave || !bassStave) return;
+      const svg = staffContainer.querySelector('svg');
+      if (!svg) return;
+      const pt  = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      const { x: svgX, y: svgY } = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+      // Ignore clicks outside the stave x-range (clef area)
+      if (svgX < STAFF_LEFT) return;
+
+      const trebleCenter = (trebleStave.getYForLine(0) + trebleStave.getYForLine(4)) / 2;
+      const bassCenter   = (bassStave.getYForLine(0)   + bassStave.getYForLine(4))   / 2;
+      const clef  = Math.abs(svgY - trebleCenter) <= Math.abs(svgY - bassCenter) ? 'treble' : 'bass';
+      const stave = clef === 'treble' ? trebleStave : bassStave;
+      const note  = yToNote(stave, svgY, clef);
+      if (!note) return;
+      handleAnswer(note.name, note.key);
+    });
 
     function renderBatch(notes, currentIdx, feedbackColor = null, focusMode = false) {
       staffContainer.innerHTML = '';
@@ -389,51 +482,23 @@ E4`;
       const COLOR_CURRENT  = '#000';
       const COLOR_UPCOMING = '#ccc';
 
-      // Safe on-staff pitch per clef — no ledger lines, used as invisible placeholder
-      // so ghost notes don't bleed ledger lines (rgba(0,0,0,0) doesn't suppress them in VexFlow)
-      const SAFE_KEY = { treble: 'b/4', bass: 'b/2' };
-
       ['treble', 'bass'].forEach(clef => {
-        const mainTickables = notes.map((n, i) => {
+        const tickables = notes.map((n, i) => {
           if (n.clef === clef) {
-            const isGhost = batchFeedback[i] === 'ghost';
-            // Ghost state: use an on-staff pitch so there are no ledger lines to bleed through
-            const sn = new StaveNote({ keys: [isGhost ? SAFE_KEY[clef] : n.key], duration: 'q', clef });
-            const color = isGhost
-              ? 'rgba(0,0,0,0)'
-              : i < currentIdx  ? (focusMode ? '#ddd' : (batchFeedback[i] ?? COLOR_DONE))
-              : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
-              :                   (focusMode ? '#ddd' : COLOR_UPCOMING);
+            const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
+            const color = i < currentIdx  ? (focusMode ? '#ddd' : (batchFeedback[i] ?? COLOR_DONE))
+                        : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
+                        :                   (focusMode ? '#ddd' : COLOR_UPCOMING);
             sn.setStyle({ fillStyle: color, strokeStyle: color });
+            sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
             return sn;
           }
           return new GhostNote({ duration: 'q' });
         });
-
-        const mainVoice = new Voice({ num_beats: notes.length, beat_value: 4 });
-        mainVoice.addTickables(mainTickables);
-        // Always format main voice alone — voice count never changes, so no layout shift
-        new Formatter().joinVoices([mainVoice]).format([mainVoice], STAVE_WIDTH - 20);
-        mainVoice.draw(ctx, clef === 'treble' ? treble : bass);
-
-        // Wrong-note pass: independent formatter with same note structure → same x positions
-        if (notes.some((_, i) => batchWrongNotes[i]?.clef === clef)) {
-          const wrongTickables = notes.map((n, i) => {
-            if (batchWrongNotes[i]?.clef === clef) {
-              const sn = new StaveNote({ keys: [batchWrongNotes[i].key], duration: 'q', clef });
-              sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
-              return sn;
-            }
-            // Placeholder: on-staff pitch → no ledger bleed
-            const sn = new StaveNote({ keys: [SAFE_KEY[clef]], duration: 'q', clef });
-            sn.setStyle({ fillStyle: 'rgba(0,0,0,0)', strokeStyle: 'rgba(0,0,0,0)' });
-            return sn;
-          });
-          const wrongVoice = new Voice({ num_beats: notes.length, beat_value: 4 });
-          wrongVoice.addTickables(wrongTickables);
-          new Formatter().joinVoices([wrongVoice]).format([wrongVoice], STAVE_WIDTH - 20);
-          wrongVoice.draw(ctx, clef === 'treble' ? treble : bass);
-        }
+        const voice = new Voice({ num_beats: notes.length, beat_value: 4 });
+        voice.addTickables(tickables);
+        new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
+        voice.draw(ctx, clef === 'treble' ? treble : bass);
       });
 
       applyViewBox();
@@ -499,10 +564,9 @@ E4`;
     let configOpen  = false;
     let streak          = 0;
     let bestStreak      = 0;
-    let questionStartTime = 0;
+
     let lastStepDir     = 0;
     let lastClefRun     = 0;
-    let batchWrongNotes = []; // persists red wrong-note per batch index for MIDI wrong answers
 
     // ── Game logic ───────────────────────────────────────────────────
     const NOTE_ORDER = 'ABCDEFG';
@@ -541,23 +605,9 @@ E4`;
       });
     }
 
-    function lerpColor(c1, c2, t) {
-      const h = s => parseInt(s, 16);
-      const lerp = (a, b) => Math.round(a + (b - a) * t);
-      const r = lerp(h(c1.slice(1,3)), h(c2.slice(1,3)));
-      const g = lerp(h(c1.slice(3,5)), h(c2.slice(3,5)));
-      const b = lerp(h(c1.slice(5,7)), h(c2.slice(5,7)));
-      return '#' + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
-    }
 
-    function responseColor(isCorrect, ms) {
-      const t = Math.min(ms / 4000, 1);
-      return isCorrect ? lerpColor('#2ea043', '#74b374', t)
-                       : lerpColor('#da3633', '#c97878', t);
-    }
 
     function newBatch(prevNote = null) {
-      batchWrongNotes = [];
       const size = Math.min(3 + Math.round(Math.random()), pool.length);
       const shuffled = weightedShuffle(pool);
       batch = [];
@@ -593,7 +643,7 @@ E4`;
           currentNote = batch[batchIdx++];
           phase = 'question';
           renderBatch(batch, batchIdx - 1);
-          questionStartTime = Date.now();
+    
           enableButtons();
         }, 700);
         return;
@@ -601,7 +651,7 @@ E4`;
       currentNote = batch[batchIdx++];
       phase = 'question';
       renderBatch(batch, batchIdx - 1);
-      questionStartTime = Date.now();
+
       enableButtons();
     }
 
@@ -623,21 +673,22 @@ E4`;
       updateStreak();
 
       if (isCorrect) {
-        const feedbackColor = responseColor(true, Date.now() - questionStartTime);
-        batchFeedback[batchIdx - 1] = feedbackColor;
-        renderBatch(batch, batchIdx - 1, feedbackColor); // visible during last-note pause
+        batchFeedback[batchIdx - 1] = '#57ab6e'; // dimmed green for past state
+        renderBatch(batch, batchIdx - 1, '#2ea043'); // bright green flash while still current
         startQuestion();
       } else {
         const wrongIdx = batchIdx - 1;
 
         if (key !== null) {
-          // MIDI: immediately ghost the correct note and show red at the played position
+          // MIDI: show comparison — amber at correct position, red at played position
           const wrongOctave = parseInt(key.split('/')[1]);
           const noteVal     = wrongOctave * 7 + 'CDEFGAB'.indexOf(name);
-          batchFeedback[wrongIdx]    = 'ghost';
-          batchWrongNotes[wrongIdx]  = { key, name, clef: noteVal >= 28 ? 'treble' : 'bass' };
-          renderBatch(batch, wrongIdx); // visible during last-note pause
-          startQuestion();
+          const wrongNote   = { key, name, clef: noteVal >= 28 ? 'treble' : 'bass' };
+          renderComparison(currentNote, wrongNote);
+          setTimeout(() => {
+            batchFeedback[wrongIdx] = '#e09000'; // amber past state when batch resumes
+            startQuestion();
+          }, 700);
         } else {
           // Button press: mark the note red immediately at its position
           batchFeedback[wrongIdx] = '#da3633';
@@ -718,9 +769,21 @@ E4`;
     document.getElementById('done-btn').addEventListener('click', closeConfig);
     toggleBtn.addEventListener('click', openConfig);
 
+    // ── Octave selector ──────────────────────────────────────────────
+    let selectedOctave = 4;
+    document.querySelectorAll('.oct-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedOctave = parseInt(btn.dataset.oct);
+        document.querySelectorAll('.oct-btn').forEach(b => b.classList.toggle('selected', b === btn));
+      });
+    });
+
     // ── Wire answer events ───────────────────────────────────────────
     document.querySelectorAll('.ans-btn').forEach(btn => {
-      btn.addEventListener('click', () => handleAnswer(btn.dataset.note));
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.note;
+        handleAnswer(name, `${name.toLowerCase()}/${selectedOctave}`);
+      });
     });
 
     document.addEventListener('keydown', e => {
@@ -737,7 +800,6 @@ E4`;
         const c4 = () => ({ key: 'c/4', clef: 'treble', name: 'C' });
         batch = [c4(), c4(), c4(), c4()];
         batchFeedback = [];
-        batchWrongNotes = [];
         batchIdx = 0;
         phase = 'question';
         startQuestion();
@@ -763,19 +825,27 @@ E4`;
 
     function updateMIDIStatus(inputs) {
       const el = document.getElementById('midi-status');
+      const btn = document.getElementById('midi-connect-btn');
       const connected = inputs.length > 0;
       if (connected) {
-        el.textContent = '⬤ ' + inputs[0].name;
-        el.style.color = 'var(--correct)';
+        btn.style.display = 'none';
+        el.innerHTML = '';
+        const span = document.createElement('span');
+        span.textContent = '⬤ ' + inputs[0].name;
+        span.style.color = 'var(--correct)';
+        el.appendChild(span);
       } else {
-        el.textContent = '⬤ no MIDI device';
-        el.style.color = 'var(--border)';
+        btn.style.display = '';
+        const span = el.querySelector('span');
+        if (span) span.remove();
       }
-      document.getElementById('answer-row').style.display = connected ? 'none' : '';
     }
 
     function initMIDI() {
-      if (!navigator.requestMIDIAccess) return;
+      if (!navigator.requestMIDIAccess) {
+        document.getElementById('midi-connect-btn').style.display = 'none';
+        return;
+      }
       navigator.requestMIDIAccess().then(access => {
         function attach() {
           access.inputs.forEach(input => { input.onmidimessage = onMIDIMessage; });
@@ -783,8 +853,12 @@ E4`;
         }
         attach();
         access.onstatechange = attach;
-      }).catch(() => {});
+      }).catch(() => {
+        document.getElementById('midi-connect-btn').textContent = 'MIDI unavailable';
+      });
     }
+
+    document.getElementById('midi-connect-btn').addEventListener('click', initMIDI);
 
     // ── Init ─────────────────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', () => {
@@ -798,7 +872,6 @@ E4`;
       newBatch();
       updateStreak();
       startQuestion();
-      initMIDI();
     });
   </script>
 </body>
