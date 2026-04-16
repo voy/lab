@@ -332,6 +332,7 @@
   <main id="main-area">
     <div id="streak-row">
       <span id="accuracy"></span>
+      <span id="speed"></span>
       <span id="streak-current"></span>
     </div>
     <div id="staff-container"></div>
@@ -623,6 +624,11 @@ function renderConfigView(notes) {
     let streak          = 0;
     const ACCURACY_WINDOW = 20;
     let answerHistory   = [];
+    const SPEED_WINDOW    = 20;
+    const SPEED_MIN_ACC   = 0.80;
+    const SPEED_MIN_N     = 3;
+    let speedHistory    = [];
+    let questionStartTime = 0;
 
     let lastStepDir     = 0;
     let lastClefRun     = 0;
@@ -701,6 +707,7 @@ function renderConfigView(notes) {
           newBatch(currentNote);
           currentNote = batch[batchIdx++];
           phase = 'question';
+          questionStartTime = Date.now();
           renderBatch(batch, batchIdx - 1);
           enableButtons();
         }, 250);
@@ -708,6 +715,7 @@ function renderConfigView(notes) {
       }
       currentNote = batch[batchIdx++];
       phase = 'question';
+      questionStartTime = Date.now();
       renderBatch(batch, batchIdx - 1);
 
       enableButtons();
@@ -732,6 +740,8 @@ function renderConfigView(notes) {
       if (answerHistory.length > ACCURACY_WINDOW) answerHistory.shift();
       if (isCorrect) {
         streak++;
+        speedHistory.push(Date.now() - questionStartTime);
+        if (speedHistory.length > SPEED_WINDOW) speedHistory.shift();
       } else {
         streak = 0;
       }
@@ -771,6 +781,18 @@ function renderConfigView(notes) {
       const pct     = n === 0 ? '—' : Math.round(correct / n * 100) + '%';
       const label   = n < ACCURACY_WINDOW ? `${correct}/${n}` : 'last 20';
       document.getElementById('accuracy').textContent       = `accuracy: ${pct} (${label})`;
+
+      const accRate = n === 0 ? 0 : correct / n;
+      const sn      = speedHistory.length;
+      const speedEl = document.getElementById('speed');
+      if (sn >= SPEED_MIN_N && accRate >= SPEED_MIN_ACC) {
+        const avg      = speedHistory.reduce((a, b) => a + b, 0) / sn;
+        const sLabel   = sn < SPEED_WINDOW ? `${sn}/${SPEED_WINDOW}` : 'last 20';
+        speedEl.textContent = `speed: ${(avg / 1000).toFixed(1)}s (${sLabel})`;
+      } else {
+        speedEl.textContent = '';
+      }
+
       document.getElementById('streak-current').textContent = `streak: ${streak}`;
     }
 
