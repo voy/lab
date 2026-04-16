@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClef, stepDir, isValidNext, isLedgerNote } from './quiz-logic.js';
+import { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch } from './quiz-logic.js';
 
 // ── parseClef ────────────────────────────────────────────────────────────────
 
@@ -157,5 +157,98 @@ describe('isLedgerNote', () => {
   it('returns true for bass notes above A3', () => {
     assert.equal(isLedgerNote(staffNote('B', 3, 'bass')), true);
     assert.equal(isLedgerNote(staffNote('C', 4, 'bass')), true);
+  });
+});
+
+// ── weightedShuffle ──────────────────────────────────────────────────────────
+// Randomness is in the order, not the content — test content invariants only.
+
+const POOL = [
+  staffNote('E', 4, 'treble'), // on-staff treble
+  staffNote('G', 4, 'treble'), // on-staff treble
+  staffNote('C', 4, 'treble'), // ledger treble (below E4)
+  staffNote('G', 2, 'bass'),   // on-staff bass
+  staffNote('B', 3, 'bass'),   // ledger bass (above A3)
+];
+
+function noteId(n) { return n.key + n.clef; }
+
+describe('weightedShuffle', () => {
+  it('contains every unique note exactly once', () => {
+    const result = weightedShuffle(POOL);
+    const ids = result.map(noteId);
+    const uniqueIds = new Set(ids);
+    assert.equal(uniqueIds.size, POOL.length, 'no duplicates');
+    assert.equal(ids.length, POOL.length, 'no notes dropped');
+    for (const n of POOL) assert.ok(uniqueIds.has(noteId(n)), `missing ${noteId(n)}`);
+  });
+
+  it('deduplicates when input already has duplicate objects', () => {
+    const note = staffNote('C', 4, 'treble');
+    const result = weightedShuffle([note, note]);
+    assert.equal(result.length, 1);
+  });
+});
+
+// ── buildBatch ───────────────────────────────────────────────────────────────
+// Pass a known shuffled order so results are deterministic.
+
+const TREBLE_NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5'].map(s =>
+  staffNote(s[0], parseInt(s[1]), 'treble'));
+const BASS_NOTES   = ['G2','A2','B2','C3','D3','E3','F3','G3'].map(s =>
+  staffNote(s[0], parseInt(s[1]), 'bass'));
+const MIXED_POOL   = [...TREBLE_NOTES, ...BASS_NOTES];
+
+describe('buildBatch', () => {
+  it('returns a batch of the requested size', () => {
+    const { batch } = buildBatch(MIXED_POOL, null, 0, 0, 3);
+    assert.equal(batch.length, 3);
+  });
+
+  it('never places the same note name consecutively', () => {
+    for (let run = 0; run < 20; run++) {
+      const shuffled = [...MIXED_POOL].sort(() => Math.random() - 0.5);
+      const { batch } = buildBatch(shuffled, null, 0, 0, 4);
+      for (let i = 1; i < batch.length; i++) {
+        assert.notEqual(batch[i].name, batch[i - 1].name,
+          `consecutive same note at index ${i}`);
+      }
+    }
+  });
+
+  it('never makes two consecutive same-direction steps', () => {
+    for (let run = 0; run < 20; run++) {
+      const shuffled = [...MIXED_POOL].sort(() => Math.random() - 0.5);
+      const { batch } = buildBatch(shuffled, null, 0, 0, 4);
+      let prevDir = 0;
+      for (let i = 1; i < batch.length; i++) {
+        const dir = stepDir(batch[i - 1], batch[i]);
+        if (dir !== 0) {
+          assert.notEqual(dir, prevDir,
+            `two consecutive ${dir > 0 ? 'ascending' : 'descending'} steps ending at index ${i}`);
+        }
+        prevDir = dir; // a skip (dir=0) resets tracking, matching buildBatch behaviour
+      }
+    }
+  });
+
+  it('switches clef after two consecutive same-clef notes when possible', () => {
+    // Start with two treble notes already in run, force the batch to have a bass note next.
+    const prevNote = staffNote('G', 4, 'treble');
+    const { batch } = buildBatch(MIXED_POOL, prevNote, 0, 2, 3);
+    assert.equal(batch[0].clef, 'bass',
+      'first note should switch clef after a run of 2');
+  });
+
+  it('all notes come from the provided pool', () => {
+    const ids = new Set(MIXED_POOL.map(noteId));
+    const { batch } = buildBatch(MIXED_POOL, null, 0, 0, 4);
+    for (const n of batch) assert.ok(ids.has(noteId(n)), `${noteId(n)} not in pool`);
+  });
+
+  it('returns updated lastDir and clefRun', () => {
+    const { lastDir, clefRun } = buildBatch(MIXED_POOL, null, 0, 0, 3);
+    assert.ok(typeof lastDir === 'number');
+    assert.ok(typeof clefRun === 'number' && clefRun >= 1);
   });
 });
