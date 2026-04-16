@@ -384,6 +384,9 @@
           <button id="midi-connect-btn">Connect MIDI</button>
           <span id="midi-name" hidden></span>
         </div>
+        <label class="setting-row">
+          <input type="checkbox" id="ignore-octave-check"> Match note name only (ignore octave)
+        </label>
       </div>
 
       <div class="modal-section">
@@ -508,6 +511,12 @@ E4`;
       if (octave < 0 || octave > 9) return null;
       return { name, key: `${name.toLowerCase()}/${octave}` };
     }
+
+    const ignoreOctaveCheck = document.getElementById('ignore-octave-check');
+    ignoreOctaveCheck.checked = localStorage.getItem('ignore-octave') === 'true';
+    ignoreOctaveCheck.addEventListener('change', () => {
+      localStorage.setItem('ignore-octave', ignoreOctaveCheck.checked);
+    });
 
     const showStatsCheck = document.getElementById('show-stats-check');
     showStatsCheck.checked = localStorage.getItem('show-stats') === 'true';
@@ -684,7 +693,7 @@ E4`;
       if (phase !== 'question') return;
       phase = 'feedback';
 
-      const isCorrect = key !== null ? key === currentNote.key : name === currentNote.name;
+      const isCorrect = (key !== null && !ignoreOctaveCheck.checked) ? key === currentNote.key : name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
 
