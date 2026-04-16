@@ -49,7 +49,7 @@
       overflow: hidden;
       display: flex;
       justify-content: center;
-      cursor: crosshair;
+      cursor: default;
     }
 
     #staff-container svg {
@@ -97,73 +97,13 @@
     .ans-btn.correct { background: var(--correct);  border-color: var(--correct-dim); color: #fff; }
     .ans-btn.wrong   { background: var(--wrong);    border-color: var(--wrong-dim);   color: #fff; }
 
-    #pool-section {
+    #footer-bar {
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding-top: 4px;
-    }
-
-    #streak-row {
-      width: 100%;
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.05em;
-      min-height: 16px;
-    }
-
-    #octave-row {
-      display: flex;
-      gap: 6px;
       justify-content: center;
+      padding-top: 2px;
     }
 
-    .oct-btn {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 600;
-      width: 36px;
-      height: 32px;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
-      outline: none;
-    }
-    .oct-btn.selected {
-      border-color: var(--accent-dim);
-      color: var(--text);
-    }
-    @media (hover: hover) {
-      .oct-btn:hover { border-color: var(--accent-dim); color: var(--text); }
-    }
-
-    #midi-status {
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.05em;
-      min-height: 16px;
-    }
-
-    #midi-connect-btn {
-      background: none;
-      border: none;
-      color: var(--muted);
-      font-size: 12px;
-      cursor: pointer;
-      padding: 4px 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      text-decoration: underline;
-      text-underline-offset: 4px;
-    }
-    #midi-connect-btn:hover { color: var(--text); }
-
-    #toggle-btn {
+    #settings-btn {
       background: none;
       border: none;
       color: var(--muted);
@@ -175,29 +115,71 @@
       text-decoration: underline;
       text-underline-offset: 4px;
     }
-    #toggle-btn:hover { color: var(--text); }
+    #settings-btn:hover { color: var(--text); }
 
-    #config-panel {
+    #streak-row {
       width: 100%;
       display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      min-height: 16px;
+    }
+
+    /* ── Modal ── */
+    #modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #modal-backdrop.open { display: flex; }
+
+    #modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #modal-title { font-size: 15px; font-weight: 600; }
+    #modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 2px;
+    }
+    #modal-close:hover { color: var(--text); }
+
+    .modal-section {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    #config-panel[hidden] { display: none; }
-
-    #textareas-row {
-      display: flex;
-      gap: 12px;
-    }
-
-    .clef-editor {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .clef-editor label {
+    .modal-section-title {
       font-size: 11px;
       font-weight: 600;
       color: var(--muted);
@@ -205,10 +187,57 @@
       letter-spacing: 0.08em;
     }
 
+    #midi-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    #midi-connect-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    #midi-connect-btn:hover { border-color: var(--accent-dim); }
+    #midi-name { color: var(--correct); font-size: 13px; }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+    }
+    .setting-row input[type="checkbox"] { cursor: pointer; accent-color: var(--accent-dim); width: 15px; height: 15px; }
+
+    #textareas-row {
+      display: flex;
+      gap: 12px;
+    }
+    .clef-editor {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .clef-editor label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
     .clef-textarea {
       width: 100%;
-      height: 200px;
-      background: var(--surface);
+      height: 180px;
+      background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 8px;
       color: var(--text);
@@ -221,36 +250,38 @@
     }
     .clef-textarea:focus { border-color: var(--accent-dim); }
 
-    .setting-row {
+    #modal-footer {
       display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--muted);
-      cursor: pointer;
-      user-select: none;
-    }
-    .setting-row input[type="checkbox"] { cursor: pointer; accent-color: var(--accent-dim); }
-
-
-    #config-btns {
-      display: flex;
-      gap: 8px;
       justify-content: flex-end;
-    }
-
-    #reset-btn, #done-btn {
+      padding: 14px 20px;
+      flex-shrink: 0;
+      position: sticky;
+      bottom: 0;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 13px;
-      padding: 6px 16px;
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s;
+      border-top: 1px solid var(--border);
     }
-    #reset-btn { color: var(--muted); }
-    #reset-btn:hover { border-color: var(--accent-dim); color: var(--text); }
-    #done-btn  { color: var(--text); border-color: var(--accent-dim); }
+    #reset-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    #reset-btn:hover { color: var(--text); }
+    #done-btn {
+      background: var(--bg);
+      border: 1px solid var(--accent-dim);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 6px 20px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
     #done-btn:hover { border-color: #58a6ff; }
 
 
@@ -308,19 +339,35 @@
       <button class="ans-btn" data-note="F">F</button>
       <button class="ans-btn" data-note="G">G</button>
     </div>
-    <div id="octave-row">
-      <button class="oct-btn" data-oct="2">2</button>
-      <button class="oct-btn" data-oct="3">3</button>
-      <button class="oct-btn selected" data-oct="4">4</button>
-      <button class="oct-btn" data-oct="5">5</button>
-      <button class="oct-btn" data-oct="6">6</button>
+    <div id="footer-bar">
+      <button id="settings-btn">settings</button>
     </div>
-    <div id="pool-section">
-      <div id="midi-status">
-        <button id="midi-connect-btn">connect MIDI</button>
+  </footer>
+
+  <div id="modal-backdrop">
+    <div id="modal">
+      <div id="modal-header">
+        <span id="modal-title">Settings</span>
+        <button id="modal-close">&#x2715;</button>
       </div>
-      <button id="toggle-btn">edit notes</button>
-      <div id="config-panel" hidden>
+
+      <div class="modal-section">
+        <div class="modal-section-title">MIDI</div>
+        <div id="midi-row">
+          <button id="midi-connect-btn">Connect MIDI</button>
+          <span id="midi-name" hidden></span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Debug</div>
+        <label class="setting-row">
+          <input type="checkbox" id="click-clef-check"> Click staff to answer
+        </label>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Note pool</div>
         <div id="textareas-row">
           <div class="clef-editor">
             <label for="treble-textarea">Treble</label>
@@ -331,13 +378,14 @@
             <textarea id="bass-textarea" class="clef-textarea" spellcheck="false"></textarea>
           </div>
         </div>
-        <div id="config-btns">
-          <button id="reset-btn">reset to defaults</button>
-          <button id="done-btn">done</button>
-        </div>
+        <div><button id="reset-btn">Reset to defaults</button></div>
+      </div>
+
+      <div id="modal-footer">
+        <button id="done-btn">Done</button>
       </div>
     </div>
-  </footer>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/vexflow@4/build/cjs/vexflow.js"></script>
   <script>
@@ -451,8 +499,18 @@ E4`;
       return { name, key: `${name.toLowerCase()}/${octave}` };
     }
 
+    const clickClefCheck = document.getElementById('click-clef-check');
+    clickClefCheck.checked = localStorage.getItem('click-clef') === 'true';
+    function applyClickClef() {
+      localStorage.setItem('click-clef', clickClefCheck.checked);
+      staffContainer.style.cursor = clickClefCheck.checked ? 'crosshair' : 'default';
+      document.getElementById('answer-row').style.display = clickClefCheck.checked ? 'none' : '';
+    }
+    clickClefCheck.addEventListener('change', applyClickClef);
+    applyClickClef();
+
     staffContainer.addEventListener('click', e => {
-      if (phase !== 'question' || !trebleStave || !bassStave) return;
+      if (!clickClefCheck.checked || phase !== 'question' || !trebleStave || !bassStave) return;
       const svg = staffContainer.querySelector('svg');
       if (!svg) return;
       const pt  = svg.createSVGPoint();
@@ -468,10 +526,10 @@ E4`;
       const stave = clef === 'treble' ? trebleStave : bassStave;
       const note  = yToNote(stave, svgY, clef);
       if (!note) return;
-      handleAnswer(note.name, note.key);
+      handleAnswer(note.name, note.key, clef);
     });
 
-    function renderBatch(notes, currentIdx, feedbackColor = null, focusMode = false) {
+    function renderBatch(notes, currentIdx, feedbackColor = null, wrongNote = null, focusMode = false) {
       staffContainer.innerHTML = '';
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
@@ -501,38 +559,28 @@ E4`;
         voice.draw(ctx, clef === 'treble' ? treble : bass);
       });
 
-      applyViewBox();
-    }
-
-
-    function renderComparison(correctNote, wrongNote) {
-      staffContainer.innerHTML = '';
-      const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
-      renderer.resize(STAFF_WIDTH, 265);
-      const ctx = renderer.getContext();
-      const { treble, bass } = buildStaves(ctx, false);
-      ['treble', 'bass'].forEach(clef => {
-        const sns = [];
-        if (correctNote.clef === clef) {
-          const sn = new StaveNote({ keys: [correctNote.key], duration: 'q', clef });
-          sn.setStyle({ fillStyle: '#e09000', strokeStyle: '#e09000' });
-          sns.push(sn);
-        }
-        if (wrongNote?.clef === clef) {
-          const sn = new StaveNote({ keys: [wrongNote.key], duration: 'q', clef });
-          sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
-          sns.push(sn);
-        }
-        if (sns.length === 0) return;
-        const voice = new Voice({ num_beats: sns.length, beat_value: 4 });
-        voice.addTickables(sns);
+      // Wrong note: render as a second voice aligned to currentIdx
+      if (wrongNote) {
+        const tickables = notes.map((_, i) => {
+          if (i === currentIdx) {
+            const sn = new StaveNote({ keys: [wrongNote.key], duration: 'q', clef: wrongNote.clef });
+            sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
+            sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
+            return sn;
+          }
+          return new GhostNote({ duration: 'q' });
+        });
+        const voice = new Voice({ num_beats: notes.length, beat_value: 4 });
+        voice.addTickables(tickables);
         new Formatter().joinVoices([voice]).format([voice], STAVE_WIDTH - 20);
-        voice.draw(ctx, clef === 'treble' ? treble : bass);
-      });
+        voice.draw(ctx, wrongNote.clef === 'treble' ? treble : bass);
+      }
+
       applyViewBox();
     }
 
-    function renderConfigView(notes) {
+
+function renderConfigView(notes) {
       staffContainer.innerHTML = '';
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
@@ -655,10 +703,9 @@ E4`;
       enableButtons();
     }
 
-    function handleAnswer(name, key = null) {
+    function handleAnswer(name, key = null, clef = null) {
       if (phase !== 'question') return;
       phase = 'feedback';
-
 
       const isCorrect = key !== null ? key === currentNote.key : name === currentNote.name;
       document.querySelector(`.ans-btn[data-note="${name}"]`)
@@ -678,23 +725,12 @@ E4`;
         startQuestion();
       } else {
         const wrongIdx = batchIdx - 1;
-
-        if (key !== null) {
-          // MIDI: show comparison — amber at correct position, red at played position
-          const wrongOctave = parseInt(key.split('/')[1]);
-          const noteVal     = wrongOctave * 7 + 'CDEFGAB'.indexOf(name);
-          const wrongNote   = { key, name, clef: noteVal >= 28 ? 'treble' : 'bass' };
-          renderComparison(currentNote, wrongNote);
-          setTimeout(() => {
-            batchFeedback[wrongIdx] = '#e09000'; // amber past state when batch resumes
-            startQuestion();
-          }, 700);
-        } else {
-          // Button press: mark the note red immediately at its position
-          batchFeedback[wrongIdx] = '#da3633';
-          renderBatch(batch, wrongIdx, '#da3633'); // visible during last-note pause
-          startQuestion();
-        }
+        batchFeedback[wrongIdx] = '#e09000'; // amber past state
+        const wrongNote = key !== null
+          ? { name, key, clef: clef ?? (parseInt(key.split('/')[1]) * 7 + 'CDEFGAB'.indexOf(name) >= 28 ? 'treble' : 'bass') }
+          : null;
+        renderBatch(batch, wrongIdx, '#e09000', wrongNote);
+        setTimeout(() => startQuestion(), 700);
       }
 
       setTimeout(clearFeedback, 400);
@@ -709,16 +745,14 @@ E4`;
     function disableButtons() { document.querySelectorAll('.ans-btn').forEach(b => b.disabled = true); }
     function clearFeedback()  { document.querySelectorAll('.ans-btn').forEach(b => b.classList.remove('correct', 'wrong')); }
 
-    // ── Config panel ─────────────────────────────────────────────────
+    // ── Settings modal ───────────────────────────────────────────────
     const trebleTextarea = document.getElementById('treble-textarea');
     const bassTextarea   = document.getElementById('bass-textarea');
-    const configPanel    = document.getElementById('config-panel');
-    const toggleBtn      = document.getElementById('toggle-btn');
+    const modalBackdrop  = document.getElementById('modal-backdrop');
 
     function openConfig() {
       configOpen = true;
-      configPanel.hidden = false;
-      toggleBtn.style.display = 'none';
+      modalBackdrop.classList.add('open');
       phase = 'feedback';
       disableButtons();
       clearFeedback();
@@ -727,8 +761,7 @@ E4`;
 
     function closeConfig() {
       configOpen = false;
-      configPanel.hidden = true;
-      toggleBtn.style.display = '';
+      modalBackdrop.classList.remove('open');
       lastStepDir = 0;
       lastClefRun = 0;
       newBatch();
@@ -767,26 +800,17 @@ E4`;
     });
 
     document.getElementById('done-btn').addEventListener('click', closeConfig);
-    toggleBtn.addEventListener('click', openConfig);
-
-    // ── Octave selector ──────────────────────────────────────────────
-    let selectedOctave = 4;
-    document.querySelectorAll('.oct-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        selectedOctave = parseInt(btn.dataset.oct);
-        document.querySelectorAll('.oct-btn').forEach(b => b.classList.toggle('selected', b === btn));
-      });
-    });
+    document.getElementById('modal-close').addEventListener('click', closeConfig);
+    modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeConfig(); });
+    document.getElementById('settings-btn').addEventListener('click', openConfig);
 
     // ── Wire answer events ───────────────────────────────────────────
     document.querySelectorAll('.ans-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const name = btn.dataset.note;
-        handleAnswer(name, `${name.toLowerCase()}/${selectedOctave}`);
-      });
+      btn.addEventListener('click', () => handleAnswer(btn.dataset.note));
     });
 
     document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && configOpen) { closeConfig(); return; }
       if (e.target.tagName === 'TEXTAREA' || configOpen) return;
       const note = e.key.toUpperCase();
       if ('ABCDEFG'.includes(note) && note.length === 1) handleAnswer(note);
@@ -819,31 +843,24 @@ E4`;
       const now = Date.now();
       if (note === lastMidiNote && now - lastMidiTime < 400) return;
       lastMidiNote = note; lastMidiTime = now;
-      const octave = Math.floor(note / 12) - 1;
-      handleAnswer(name, `${name.toLowerCase()}/${octave}`);
+      const octave  = Math.floor(note / 12) - 1;
+      const noteVal = octave * 7 + 'CDEFGAB'.indexOf(name);
+      const clef    = noteVal >= 28 ? 'treble' : 'bass';
+      handleAnswer(name, `${name.toLowerCase()}/${octave}`, clef);
     }
 
     function updateMIDIStatus(inputs) {
-      const el = document.getElementById('midi-status');
-      const btn = document.getElementById('midi-connect-btn');
+      const btn  = document.getElementById('midi-connect-btn');
+      const name = document.getElementById('midi-name');
       const connected = inputs.length > 0;
-      if (connected) {
-        btn.style.display = 'none';
-        el.innerHTML = '';
-        const span = document.createElement('span');
-        span.textContent = '⬤ ' + inputs[0].name;
-        span.style.color = 'var(--correct)';
-        el.appendChild(span);
-      } else {
-        btn.style.display = '';
-        const span = el.querySelector('span');
-        if (span) span.remove();
-      }
+      btn.hidden  = connected;
+      name.hidden = !connected;
+      if (connected) name.textContent = '⬤ ' + inputs[0].name;
     }
 
     function initMIDI() {
       if (!navigator.requestMIDIAccess) {
-        document.getElementById('midi-connect-btn').style.display = 'none';
+        document.getElementById('midi-connect-btn').hidden = true;
         return;
       }
       navigator.requestMIDIAccess().then(access => {
