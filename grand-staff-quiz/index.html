@@ -319,31 +319,7 @@
     #modal-done-btn:hover { border-color: #58a6ff; }
 
 
-    #progress-bar {
-      width: 100%;
-      max-width: 600px;
-      height: 2px;
-      background: var(--border);
-      overflow: hidden;
-      opacity: 0;
-      transition: opacity 0.1s;
-    }
-    #progress-bar.running {
-      opacity: 1;
-    }
-    #progress-bar::after {
-      content: '';
-      display: block;
-      height: 100%;
-      width: 0%;
-      background: var(--accent-dim);
-    }
-    #progress-bar.running::after {
-      width: 100%;
-      transition: width 750ms linear;
-    }
-
-    @media (max-width: 440px) {
+@media (max-width: 440px) {
       #main-area  { padding: 12px 8px 8px; }
       #controls   { padding: 8px 8px 16px; }
       #staff-container { padding: 6px 6px; }
@@ -361,9 +337,7 @@
     <div id="staff-container"></div>
   </main>
 
-  <div id="progress-bar"></div>
-
-  <footer id="controls">
+<footer id="controls">
     <div id="answer-row">
       <button class="ans-btn" data-note="A">A</button>
       <button class="ans-btn" data-note="B">B</button>
@@ -547,7 +521,7 @@ E4`;
     applyClickClef();
 
     staffContainer.addEventListener('click', e => {
-      if (!clickClefCheck.checked || phase !== 'question' || !trebleStave || !bassStave) return;
+      if (!clickClefCheck.checked || !trebleStave || !bassStave) return;
       const svg = staffContainer.querySelector('svg');
       if (!svg) return;
       const pt  = svg.createSVGPoint();
@@ -566,24 +540,23 @@ E4`;
       handleAnswer(note.name, note.key, clef);
     });
 
-    function renderBatch(notes, currentIdx, feedbackColor = null, wrongNote = null, focusMode = false) {
+    function renderBatch(notes, currentIdx, feedbackColor = null, wrongNote = null) {
       staffContainer.innerHTML = '';
       const renderer = new Renderer(staffContainer, Renderer.Backends.SVG);
       renderer.resize(STAFF_WIDTH, 265);
       const ctx = renderer.getContext();
       const { treble, bass } = buildStaves(ctx, false);
 
-      const COLOR_DONE     = '#ccc';
-      const COLOR_CURRENT  = '#000';
-      const COLOR_UPCOMING = '#ccc';
+      const COLOR_DONE    = '#ccc';
+      const COLOR_CURRENT = '#000';
 
       ['treble', 'bass'].forEach(clef => {
         const tickables = notes.map((n, i) => {
           if (n.clef === clef) {
             const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
-            const color = i < currentIdx  ? (focusMode ? '#ddd' : (batchFeedback[i] ?? COLOR_DONE))
+            const color = i < currentIdx  ? (batchFeedback[i] ?? COLOR_DONE)
                         : i === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
-                        :                   (focusMode ? '#ddd' : COLOR_UPCOMING);
+                        :                   COLOR_DONE;
             sn.setStyle({ fillStyle: color, strokeStyle: color });
             sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
             return sn;
@@ -729,9 +702,8 @@ function renderConfigView(notes) {
           currentNote = batch[batchIdx++];
           phase = 'question';
           renderBatch(batch, batchIdx - 1);
-    
           enableButtons();
-        }, 700);
+        }, 250);
         return;
       }
       currentNote = batch[batchIdx++];
@@ -741,7 +713,14 @@ function renderConfigView(notes) {
       enableButtons();
     }
 
+    let feedbackTimer = null;
+
     function handleAnswer(name, key = null, clef = null) {
+      if (phase === 'feedback' && feedbackTimer !== null) {
+        clearTimeout(feedbackTimer);
+        feedbackTimer = null;
+        startQuestion();
+      }
       if (phase !== 'question') return;
       phase = 'feedback';
 
@@ -769,7 +748,18 @@ function renderConfigView(notes) {
           ? { name, key, clef: clef ?? (parseInt(key.split('/')[1]) * 7 + 'CDEFGAB'.indexOf(name) >= 28 ? 'treble' : 'bass') }
           : null;
         renderBatch(batch, wrongIdx, '#e09000', wrongNote);
-        setTimeout(() => startQuestion(), 700);
+        feedbackTimer = setTimeout(() => {
+          feedbackTimer = null;
+          if (batchIdx >= batch.length) {
+            newBatch(currentNote);
+            currentNote = batch[batchIdx++];
+            phase = 'question';
+            renderBatch(batch, batchIdx - 1);
+            enableButtons();
+          } else {
+            startQuestion();
+          }
+        }, 700);
       }
 
       setTimeout(clearFeedback, 400);
