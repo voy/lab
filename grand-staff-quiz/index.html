@@ -728,7 +728,7 @@ E4`;
     function newBatch(prevNote = null) {
       const size = Math.min(parseInt(batchSizeInput.value) || 4, pool.length);
       const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
-      batch         = result.batch;
+      batch         = addIntervals(result.batch, pool.length);
       lastStepDir   = result.lastDir;
       lastClefRun   = result.clefRun;
       batchIdx      = 0;
@@ -769,6 +769,7 @@ E4`;
       phase = 'feedback';
 
       const isCorrect = (key !== null && !ignoreOctaveCheck.checked) ? key === currentNote.key : name === currentNote.name;
+
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
 
@@ -784,12 +785,12 @@ E4`;
       updateStreak();
 
       if (isCorrect) {
-        batchFeedback[batchIdx - 1] = '#57ab6e'; // dimmed green for past state
-        renderBatch(batch, batchIdx - 1, '#2ea043'); // bright green flash while still current
+        batchFeedback[batchIdx - 1] = '#57ab6e';
+        renderBatch(batch, batchIdx - 1, '#2ea043');
         startQuestion();
       } else {
         const wrongIdx = batchIdx - 1;
-        batchFeedback[wrongIdx] = '#e09000'; // amber past state
+        batchFeedback[wrongIdx] = '#e09000';
         const wrongNote = key !== null
           ? { name, key, clef: clef ?? (parseInt(key.split('/')[1]) * 7 + 'CDEFGAB'.indexOf(name) >= 28 ? 'treble' : 'bass') }
           : null;

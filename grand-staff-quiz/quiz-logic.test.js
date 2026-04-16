@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch } = require('./quiz-logic.js');
+const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals } = require('./quiz-logic.js');
 
 // ── parseClef ────────────────────────────────────────────────────────────────
 
@@ -225,5 +225,93 @@ describe('buildBatch', () => {
     const { lastDir, clefRun } = buildBatch([c4, d4], null, 0, 0, 2);
     assert.equal(lastDir, 1);  // C→D is an ascending step
     assert.equal(clefRun, 2);  // two consecutive treble notes
+  });
+});
+
+// ── pitchVal ─────────────────────────────────────────────────────────────────
+
+describe('pitchVal', () => {
+  it('C4 < D4', () => {
+    assert.ok(pitchVal(staffNote('C', 4, 'treble')) < pitchVal(staffNote('D', 4, 'treble')));
+  });
+  it('B3 < C4 (octave boundary)', () => {
+    assert.ok(pitchVal(staffNote('B', 3, 'treble')) < pitchVal(staffNote('C', 4, 'treble')));
+  });
+  it('C4 < C5', () => {
+    assert.ok(pitchVal(staffNote('C', 4, 'treble')) < pitchVal(staffNote('C', 5, 'treble')));
+  });
+});
+
+// ── addIntervals ─────────────────────────────────────────────────────────────
+
+const alwaysMerge = () => 0; // rand() < any prob → always merges, direction = lower-first (0 < 0.5)
+const neverMerge  = () => 1; // rand() >= any prob → never merges
+
+// Returns values from a fixed sequence, cycling if exhausted
+function seq(...vals) { let i = 0; return () => vals[i++ % vals.length]; }
+
+describe('addIntervals', () => {
+  const c4t = staffNote('C', 4, 'treble');
+  const e4t = staffNote('E', 4, 'treble');
+  const g4t = staffNote('G', 4, 'treble');
+  const g2b = staffNote('G', 2, 'bass');
+
+  it('returns notes unchanged when pool < 8', () => {
+    const notes = [c4t, e4t];
+    assert.deepEqual(addIntervals(notes, 7, alwaysMerge), notes);
+  });
+
+  it('keeps same-clef pair lower-first when second rand < 0.5', () => {
+    const result = addIntervals([c4t, e4t], 8, seq(0, 0.4));
+    assert.deepEqual(result, [c4t, e4t]);
+  });
+
+  it('reorders same-clef pair to upper-first when second rand >= 0.5', () => {
+    const result = addIntervals([c4t, e4t], 8, seq(0, 0.5));
+    assert.deepEqual(result, [e4t, c4t]);
+  });
+
+  it('reorders by pitch regardless of original order in batch', () => {
+    // e4t comes before c4t but lower-first should give [c4t, e4t]
+    const result = addIntervals([e4t, c4t], 8, alwaysMerge); // alwaysMerge → lower-first
+    assert.deepEqual(result, [c4t, e4t]);
+  });
+
+  it('does not reorder cross-clef pairs', () => {
+    const result = addIntervals([c4t, g2b], 8, alwaysMerge);
+    assert.deepEqual(result, [c4t, g2b]);
+  });
+
+  it('does not reorder when rand is above threshold', () => {
+    const result = addIntervals([e4t, c4t], 8, neverMerge);
+    assert.deepEqual(result, [e4t, c4t]);
+  });
+
+  it('leaves trailing non-reorderable note intact', () => {
+    const result = addIntervals([c4t, e4t, g2b], 8, alwaysMerge);
+    assert.equal(result.length, 3);
+    assert.deepEqual(result[2], g2b);
+  });
+
+  it('still creates one interval via fallback when rand never triggers 20%', () => {
+    // neverMerge skips all probabilistic merges; fallback reorders first same-clef pair
+    // direction: neverMerge()=1 >= 0.5 → upper-first → [e4t, c4t, g4t]
+    const result = addIntervals([c4t, e4t, g4t], 8, neverMerge);
+    assert.deepEqual(result, [e4t, c4t, g4t]);
+  });
+
+  it('guarantees at least one interval even when rand never triggers 20%', () => {
+    // neverMerge skips all probabilistic merges; fallback should reorder first same-clef pair
+    // neverMerge returns 1, so direction = upper-first (1 >= 0.5) → [e4t, c4t, g2b]
+    const result = addIntervals([c4t, e4t, g2b], 8, neverMerge);
+    assert.deepEqual(result[0], e4t);
+    assert.deepEqual(result[1], c4t);
+    assert.deepEqual(result[2], g2b);
+  });
+
+  it('does not force an interval when no same-clef consecutive pair exists', () => {
+    // alternating clefs — nothing to reorder
+    const result = addIntervals([c4t, g2b, e4t, g2b], 8, neverMerge);
+    assert.deepEqual(result, [c4t, g2b, e4t, g2b]);
   });
 });
