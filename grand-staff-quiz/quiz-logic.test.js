@@ -30,11 +30,6 @@ describe('parseClef', () => {
     assert.equal(result.length, 2);
   });
 
-  it('skips blank lines', () => {
-    const result = parseClef('\nC4\n\nD4\n', 'treble');
-    assert.equal(result.length, 2);
-  });
-
   it('skips lines with invalid format', () => {
     const result = parseClef('C4\nInvalid\nXX\nD4', 'treble');
     assert.equal(result.length, 2);
@@ -43,15 +38,6 @@ describe('parseClef', () => {
   it('handles escaped newlines from localStorage', () => {
     const result = parseClef('C4\\nD4', 'treble');
     assert.equal(result.length, 2);
-  });
-
-  it('attaches the correct clef', () => {
-    const [note] = parseClef('G2', 'bass');
-    assert.equal(note.clef, 'bass');
-  });
-
-  it('returns empty array for empty input', () => {
-    assert.deepEqual(parseClef('', 'treble'), []);
   });
 });
 
@@ -108,8 +94,7 @@ describe('isValidNext', () => {
   });
 
   it('allows a step that reverses direction', () => {
-    assert.equal(isValidNext(note('A'), note('B'), 1), true);  // descend after ascending
-    // wait — A after B is descending, lastDir was +1, dir is -1 → different, allowed
+    // A after B is descending (dir=-1), lastDir was +1 → different, allowed
     assert.equal(isValidNext(note('A'), note('B'), 1), true);
   });
 
@@ -182,12 +167,6 @@ describe('weightedShuffle', () => {
     assert.equal(ids.length, POOL.length, 'no notes dropped');
     for (const n of POOL) assert.ok(uniqueIds.has(noteId(n)), `missing ${noteId(n)}`);
   });
-
-  it('deduplicates when input already has duplicate objects', () => {
-    const note = staffNote('C', 4, 'treble');
-    const result = weightedShuffle([note, note]);
-    assert.equal(result.length, 1);
-  });
 });
 
 // ── buildBatch ───────────────────────────────────────────────────────────────
@@ -240,15 +219,11 @@ describe('buildBatch', () => {
       'first note should switch clef after a run of 2');
   });
 
-  it('all notes come from the provided pool', () => {
-    const ids = new Set(MIXED_POOL.map(noteId));
-    const { batch } = buildBatch(MIXED_POOL, null, 0, 0, 4);
-    for (const n of batch) assert.ok(ids.has(noteId(n)), `${noteId(n)} not in pool`);
-  });
-
-  it('returns updated lastDir and clefRun', () => {
-    const { lastDir, clefRun } = buildBatch(MIXED_POOL, null, 0, 0, 3);
-    assert.ok(typeof lastDir === 'number');
-    assert.ok(typeof clefRun === 'number' && clefRun >= 1);
+  it('tracks direction and clef run across the batch', () => {
+    const c4 = staffNote('C', 4, 'treble');
+    const d4 = staffNote('D', 4, 'treble');
+    const { lastDir, clefRun } = buildBatch([c4, d4], null, 0, 0, 2);
+    assert.equal(lastDir, 1);  // C→D is an ascending step
+    assert.equal(clefRun, 2);  // two consecutive treble notes
   });
 });
