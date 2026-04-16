@@ -511,21 +511,11 @@ E4`;
     }
 
     // ── Staff click → note ───────────────────────────────────────────
-    // Bottom line of treble = E4, bottom line of bass = G2.
-    // Each half-space up = one diatonic step.
-    const STAFF_NOTE_NAMES = 'CDEFGAB';
-
     function yToNote(stave, svgY, clef) {
-      const half      = stave.getSpacingBetweenLines() / 2;
-      const bottomY   = stave.getYForLine(4);
-      const steps     = Math.round((bottomY - svgY) / half);
-      const [base, baseOct] = clef === 'treble' ? ['E', 4] : ['G', 2];
-      const baseIdx   = STAFF_NOTE_NAMES.indexOf(base);
-      const total     = baseIdx + steps;
-      const name      = STAFF_NOTE_NAMES[((total % 7) + 7) % 7];
-      const octave    = baseOct + Math.floor(total / 7);
-      if (octave < 0 || octave > 9) return null;
-      return { name, key: `${name.toLowerCase()}/${octave}` };
+      const half    = stave.getSpacingBetweenLines() / 2;
+      const bottomY = stave.getYForLine(4);
+      const steps   = Math.round((bottomY - svgY) / half);
+      return stepToNote(steps, clef);
     }
 
     const ignoreOctaveCheck = document.getElementById('ignore-octave-check');
@@ -622,34 +612,44 @@ E4`;
       const COLOR_DONE    = '#ccc';
       const COLOR_CURRENT = '#000';
 
-      for (let b = 0; b < numBars; b++) {
-        const offset   = b * NOTES_PER_BAR;
-        const raw      = notes.slice(offset, offset + NOTES_PER_BAR);
-        // Pad partial last bar with nulls so notes anchor to the left
-        const barNotes = raw.length < NOTES_PER_BAR
+      // Pad partial last bar with nulls so notes anchor to the left
+      const padBar = offset => {
+        const raw = notes.slice(offset, offset + NOTES_PER_BAR);
+        return raw.length < NOTES_PER_BAR
           ? [...raw, ...Array(NOTES_PER_BAR - raw.length).fill(null)]
           : raw;
-        const ts = tStaves[b];
-        const fmtW = ts.getX() + ts.getWidth() - ts.getNoteStartX() - 10;
+      };
 
+      const styledNote = (key, clef, color) => {
+        const sn = new StaveNote({ keys: [key], duration: 'q', clef });
+        sn.setStyle({ fillStyle: color, strokeStyle: color });
+        sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
+        return sn;
+      };
+
+      const drawBar = (tickables, stave) => {
+        const fmtW = stave.getX() + stave.getWidth() - stave.getNoteStartX() - 10;
+        const voice = new Voice({ num_beats: NOTES_PER_BAR, beat_value: 4 });
+        voice.addTickables(tickables);
+        new Formatter().joinVoices([voice]).format([voice], fmtW);
+        voice.draw(ctx, stave);
+      };
+
+      for (let b = 0; b < numBars; b++) {
+        const offset   = b * NOTES_PER_BAR;
+        const barNotes = padBar(offset);
         ['treble', 'bass'].forEach(clef => {
           const tickables = barNotes.map((n, i) => {
             const gi = offset + i;
             if (n !== null && n.clef === clef) {
-              const sn = new StaveNote({ keys: [n.key], duration: 'q', clef });
               const color = gi < currentIdx  ? (batchFeedback[gi] ?? COLOR_DONE)
                           : gi === currentIdx ? (feedbackColor ?? COLOR_CURRENT)
                           :                    COLOR_DONE;
-              sn.setStyle({ fillStyle: color, strokeStyle: color });
-              sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
-              return sn;
+              return styledNote(n.key, clef, color);
             }
             return new GhostNote({ duration: 'q' });
           });
-          const voice = new Voice({ num_beats: NOTES_PER_BAR, beat_value: 4 });
-          voice.addTickables(tickables);
-          new Formatter().joinVoices([voice]).format([voice], fmtW);
-          voice.draw(ctx, clef === 'treble' ? tStaves[b] : bStaves[b]);
+          drawBar(tickables, clef === 'treble' ? tStaves[b] : bStaves[b]);
         });
       }
 
@@ -657,25 +657,11 @@ E4`;
       if (wrongNote) {
         const wrongBar = Math.floor(currentIdx / NOTES_PER_BAR);
         const offset   = wrongBar * NOTES_PER_BAR;
-        const rawWrong = notes.slice(offset, offset + NOTES_PER_BAR);
-        const barNotes = rawWrong.length < NOTES_PER_BAR
-          ? [...rawWrong, ...Array(NOTES_PER_BAR - rawWrong.length).fill(null)]
-          : rawWrong;
-        const tickables = barNotes.map((_, i) => {
-          if (offset + i === currentIdx) {
-            const sn = new StaveNote({ keys: [wrongNote.key], duration: 'q', clef: wrongNote.clef });
-            sn.setStyle({ fillStyle: '#da3633', strokeStyle: '#da3633' });
-            sn.setStemStyle({ strokeStyle: 'rgba(0,0,0,0)', fillStyle: 'rgba(0,0,0,0)' });
-            return sn;
-          }
-          return new GhostNote({ duration: 'q' });
-        });
-        const wts  = tStaves[wrongBar];
-        const wFmtW = wts.getX() + wts.getWidth() - wts.getNoteStartX() - 10;
-        const voice = new Voice({ num_beats: NOTES_PER_BAR, beat_value: 4 });
-        voice.addTickables(tickables);
-        new Formatter().joinVoices([voice]).format([voice], wFmtW);
-        voice.draw(ctx, wrongNote.clef === 'treble' ? tStaves[wrongBar] : bStaves[wrongBar]);
+        const tickables = padBar(offset).map((_, i) =>
+          offset + i === currentIdx
+            ? styledNote(wrongNote.key, wrongNote.clef, '#da3633')
+            : new GhostNote({ duration: 'q' }));
+        drawBar(tickables, wrongNote.clef === 'treble' ? tStaves[wrongBar] : bStaves[wrongBar]);
       }
 
       applyViewBox();
@@ -713,11 +699,7 @@ E4`;
     let phase       = 'idle';
     let configOpen  = false;
     let streak          = 0;
-    const ACCURACY_WINDOW = 20;
     let answerHistory   = [];
-    const SPEED_WINDOW    = 20;
-    const SPEED_MIN_ACC   = 0.80;
-    const SPEED_MIN_N     = 3;
     let speedHistory    = [];
     let questionStartTime = 0;
 
@@ -768,7 +750,7 @@ E4`;
       if (phase !== 'question') return;
       phase = 'feedback';
 
-      const isCorrect = (key !== null && !ignoreOctaveCheck.checked) ? key === currentNote.key : name === currentNote.name;
+      const isCorrect = isCorrectAnswer(name, key, currentNote, ignoreOctaveCheck.checked);
 
       document.querySelector(`.ans-btn[data-note="${name}"]`)
         .classList.add(isCorrect ? 'correct' : 'wrong');
@@ -791,9 +773,7 @@ E4`;
       } else {
         const wrongIdx = batchIdx - 1;
         batchFeedback[wrongIdx] = '#e09000';
-        const wrongNote = key !== null
-          ? { name, key, clef: clef ?? (parseInt(key.split('/')[1]) * 7 + 'CDEFGAB'.indexOf(name) >= 28 ? 'treble' : 'bass') }
-          : null;
+        const wrongNote = key !== null ? { name, key, clef } : null;
         renderBatch(batch, wrongIdx, '#e09000', wrongNote);
         feedbackTimer = setTimeout(() => {
           feedbackTimer = null;
@@ -813,23 +793,12 @@ E4`;
     }
 
     function updateStreak() {
-      const n       = answerHistory.length;
-      const correct = answerHistory.filter(Boolean).length;
-      const pct     = n === 0 ? '—' : Math.round(correct / n * 100) + '%';
-      const label   = n < ACCURACY_WINDOW ? `${correct}/${n}` : 'last 20';
-      document.getElementById('accuracy').textContent       = `accuracy: ${pct} (${label})`;
-
-      const accRate = n === 0 ? 0 : correct / n;
-      const sn      = speedHistory.length;
-      const speedEl = document.getElementById('speed');
-      if (sn >= SPEED_MIN_N && accRate >= SPEED_MIN_ACC) {
-        const avg      = speedHistory.reduce((a, b) => a + b, 0) / sn;
-        const sLabel   = sn < SPEED_WINDOW ? `${sn}/${SPEED_WINDOW}` : 'last 20';
-        speedEl.textContent = `speed: ${(avg / 1000).toFixed(1)}s (${sLabel})`;
-      } else {
-        speedEl.textContent = '';
-      }
-
+      const stats = computeStats(answerHistory, speedHistory);
+      const pct = stats.accuracyPct === null ? '—' : `${stats.accuracyPct}%`;
+      document.getElementById('accuracy').textContent = `accuracy: ${pct} (${stats.accuracyLabel})`;
+      document.getElementById('speed').textContent = stats.speedMs !== null
+        ? `speed: ${(stats.speedMs / 1000).toFixed(1)}s (${stats.speedLabel})`
+        : '';
       document.getElementById('streak-current').textContent = `streak: ${streak}`;
     }
 
@@ -844,42 +813,43 @@ E4`;
     const configPanel    = document.getElementById('config-panel');
     const toggleBtn      = document.getElementById('toggle-btn');
 
-    function openSettings() {
+    function pauseGame() {
       configOpen = true;
-      modalBackdrop.classList.add('open');
       phase = 'feedback';
       disableButtons();
       clearFeedback();
     }
 
-    function closeSettings() {
+    function resumeGame() {
       configOpen = false;
-      modalBackdrop.classList.remove('open');
-      if (!configPanel.hidden) return; // note editor still open, don't restart
       lastStepDir = 0;
       lastClefRun = 0;
       newBatch();
       startQuestion();
     }
 
+    function openSettings() {
+      pauseGame();
+      modalBackdrop.classList.add('open');
+    }
+
+    function closeSettings() {
+      modalBackdrop.classList.remove('open');
+      if (!configPanel.hidden) return; // note editor still open, don't restart
+      resumeGame();
+    }
+
     function openConfig() {
-      configOpen = true;
+      pauseGame();
       configPanel.hidden = false;
       toggleBtn.style.display = 'none';
-      phase = 'feedback';
-      disableButtons();
-      clearFeedback();
       renderConfigView(pool);
     }
 
     function closeConfig() {
-      configOpen = false;
       configPanel.hidden = true;
       toggleBtn.style.display = '';
-      lastStepDir = 0;
-      lastClefRun = 0;
-      newBatch();
-      startQuestion();
+      resumeGame();
     }
 
     function refreshPool() {
@@ -937,22 +907,17 @@ E4`;
     });
 
     // ── MIDI ─────────────────────────────────────────────────────────
-    const MIDI_NAMES = ['C',null,'D',null,'E','F',null,'G',null,'A',null,'B'];
-
     let lastMidiNote = -1, lastMidiTime = 0;
 
     function onMIDIMessage(e) {
       const [status, note, velocity] = e.data;
       if ((status & 0xf0) !== 0x90 || velocity === 0) return;
-      const name = MIDI_NAMES[note % 12];
-      if (!name) return;
+      const parsed = midiToNote(note);
+      if (!parsed) return;
       const now = Date.now();
       if (note === lastMidiNote && now - lastMidiTime < 400) return;
       lastMidiNote = note; lastMidiTime = now;
-      const octave  = Math.floor(note / 12) - 1;
-      const noteVal = octave * 7 + 'CDEFGAB'.indexOf(name);
-      const clef    = noteVal >= 28 ? 'treble' : 'bass';
-      handleAnswer(name, `${name.toLowerCase()}/${octave}`, clef);
+      handleAnswer(parsed.name, parsed.key, parsed.clef);
     }
 
     function updateMIDIStatus(inputs) {

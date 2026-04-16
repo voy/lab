@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals } = require('./quiz-logic.js');
+const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals, stepToNote, midiToNote, isCorrectAnswer, computeStats } = require('./quiz-logic.js');
 
 // ── parseClef ────────────────────────────────────────────────────────────────
 
@@ -313,5 +313,146 @@ describe('addIntervals', () => {
     // alternating clefs — nothing to reorder
     const result = addIntervals([c4t, g2b, e4t, g2b], 8, neverMerge);
     assert.deepEqual(result, [c4t, g2b, e4t, g2b]);
+  });
+});
+
+// ── stepToNote ───────────────────────────────────────────────────────────────
+
+describe('stepToNote', () => {
+  it('treble: 0 steps = E4 (bottom line)', () => {
+    assert.deepEqual(stepToNote(0, 'treble'), { name: 'E', key: 'e/4' });
+  });
+  it('treble: 8 steps = F5 (top line)', () => {
+    assert.deepEqual(stepToNote(8, 'treble'), { name: 'F', key: 'f/5' });
+  });
+  it('treble: -2 steps = C4 (middle C below staff)', () => {
+    assert.deepEqual(stepToNote(-2, 'treble'), { name: 'C', key: 'c/4' });
+  });
+  it('bass: 0 steps = G2 (bottom line)', () => {
+    assert.deepEqual(stepToNote(0, 'bass'), { name: 'G', key: 'g/2' });
+  });
+  it('bass: 8 steps = A3 (top line)', () => {
+    assert.deepEqual(stepToNote(8, 'bass'), { name: 'A', key: 'a/3' });
+  });
+  it('bass: 10 steps = C4 (middle C above staff)', () => {
+    assert.deepEqual(stepToNote(10, 'bass'), { name: 'C', key: 'c/4' });
+  });
+  it('octave wrap up: treble 7 steps = E5', () => {
+    assert.deepEqual(stepToNote(7, 'treble'), { name: 'E', key: 'e/5' });
+  });
+  it('octave wrap down: treble -7 steps = E3', () => {
+    assert.deepEqual(stepToNote(-7, 'treble'), { name: 'E', key: 'e/3' });
+  });
+  it('returns null for octave outside 0-9', () => {
+    assert.equal(stepToNote(-100, 'treble'), null);
+    assert.equal(stepToNote(100, 'treble'), null);
+  });
+});
+
+// ── midiToNote ───────────────────────────────────────────────────────────────
+
+// ── isCorrectAnswer ──────────────────────────────────────────────────────────
+
+describe('isCorrectAnswer', () => {
+  const c4 = { name: 'C', key: 'c/4' };
+  const c5 = { name: 'C', key: 'c/5' };
+
+  it('name-only match when key is null (keyboard/button)', () => {
+    assert.equal(isCorrectAnswer('C', null, c4, false), true);
+    assert.equal(isCorrectAnswer('C', null, c5, false), true);
+    assert.equal(isCorrectAnswer('D', null, c4, false), false);
+  });
+
+  it('strict key match when key provided and ignoreOctave is false', () => {
+    assert.equal(isCorrectAnswer('C', 'c/4', c4, false), true);
+    assert.equal(isCorrectAnswer('C', 'c/5', c4, false), false);
+  });
+
+  it('name-only match when ignoreOctave is true, even with key provided', () => {
+    assert.equal(isCorrectAnswer('C', 'c/5', c4, true), true);
+    assert.equal(isCorrectAnswer('D', 'd/4', c4, true), false);
+  });
+});
+
+// ── computeStats ─────────────────────────────────────────────────────────────
+
+describe('computeStats', () => {
+  it('empty history: pct=null, label="0/0", no speed', () => {
+    const s = computeStats([], []);
+    assert.equal(s.accuracyPct, null);
+    assert.equal(s.accuracyLabel, '0/0');
+    assert.equal(s.speedMs, null);
+    assert.equal(s.speedLabel, null);
+  });
+
+  it('partial history shows "correct/total" label', () => {
+    const s = computeStats([true, true, true, false, false], []);
+    assert.equal(s.accuracyPct, 60);
+    assert.equal(s.accuracyLabel, '3/5');
+  });
+
+  it('full 20-answer window shows "last 20" label', () => {
+    const twenty = Array(20).fill(true);
+    const s = computeStats(twenty, []);
+    assert.equal(s.accuracyPct, 100);
+    assert.equal(s.accuracyLabel, 'last 20');
+  });
+
+  it('hides speed below SPEED_MIN_N (3) samples', () => {
+    const s = computeStats([true, true], [1000, 1200]);
+    assert.equal(s.speedMs, null);
+    assert.equal(s.speedLabel, null);
+  });
+
+  it('hides speed when accuracy below SPEED_MIN_ACC (80%)', () => {
+    // 3 out of 5 = 60% accuracy, below threshold
+    const s = computeStats([true, true, true, false, false], [1000, 1200, 1400]);
+    assert.equal(s.speedMs, null);
+  });
+
+  it('shows speed when ≥3 samples and ≥80% accuracy', () => {
+    const s = computeStats([true, true, true, true], [1000, 2000, 3000, 4000]);
+    assert.equal(s.speedMs, 2500);
+    assert.equal(s.speedLabel, '4/20');
+  });
+
+  it('shows "last 20" speed label when history at window', () => {
+    const twenty = Array(20).fill(true);
+    const speeds = Array(20).fill(1500);
+    const s = computeStats(twenty, speeds);
+    assert.equal(s.speedMs, 1500);
+    assert.equal(s.speedLabel, 'last 20');
+  });
+
+  it('at exact 80% accuracy boundary, speed is shown', () => {
+    // 4 of 5 = 80% exactly
+    const s = computeStats([true, true, true, true, false], [1000, 1000, 1000, 1000]);
+    assert.notEqual(s.speedMs, null);
+  });
+});
+
+describe('midiToNote', () => {
+  it('middle C (60) = C4 treble', () => {
+    assert.deepEqual(midiToNote(60), { name: 'C', key: 'c/4', clef: 'treble' });
+  });
+  it('B3 (59) = bass (just below middle C)', () => {
+    assert.deepEqual(midiToNote(59), { name: 'B', key: 'b/3', clef: 'bass' });
+  });
+  it('C3 (48) = bass', () => {
+    assert.deepEqual(midiToNote(48), { name: 'C', key: 'c/3', clef: 'bass' });
+  });
+  it('C5 (72) = treble', () => {
+    assert.deepEqual(midiToNote(72), { name: 'C', key: 'c/5', clef: 'treble' });
+  });
+  it('A0 (21) = bass (piano low)', () => {
+    assert.deepEqual(midiToNote(21), { name: 'A', key: 'a/0', clef: 'bass' });
+  });
+  it('C8 (108) = treble (piano high)', () => {
+    assert.deepEqual(midiToNote(108), { name: 'C', key: 'c/8', clef: 'treble' });
+  });
+  it('returns null for black keys', () => {
+    assert.equal(midiToNote(61), null); // C#4
+    assert.equal(midiToNote(63), null); // D#4
+    assert.equal(midiToNote(66), null); // F#4
   });
 });
