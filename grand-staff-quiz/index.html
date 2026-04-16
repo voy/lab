@@ -405,7 +405,7 @@
           <input type="checkbox" id="show-stats-check"> Show performance stats
         </label>
         <div class="setting-row">
-          <input type="number" id="batch-size-input" min="1" max="16" value="4"> Notes per batch
+          <input type="number" id="batch-size-input" min="1" max="4" value="1"> Bars per batch
         </div>
       </div>
 
@@ -477,14 +477,14 @@ E4`;
     const TREBLE_Y      = 35;
     const BASS_Y        = 185;
     const NOTES_PER_BAR = 4;
-    const BAR_WIDTH     = 180; // stave width per bar (note area); first bar prepends STAFF_LEFT
+    const BAR_WIDTH     = 220;
 
     const staffContainer = document.getElementById('staff-container');
 
     function applyViewBox() {
       const svg = staffContainer.querySelector('svg');
       const w = parseFloat(svg.getAttribute('width')) || STAFF_WIDTH;
-      svg.setAttribute('viewBox', `35 45 ${w - 35} 240`);
+      svg.setAttribute('viewBox', `44 45 ${w - 44} 240`);
       svg.removeAttribute('width');
       svg.removeAttribute('height');
       svg.style.width = '100%';
@@ -535,11 +535,11 @@ E4`;
     });
 
     const batchSizeInput = document.getElementById('batch-size-input');
-    batchSizeInput.value = localStorage.getItem('batch-size') ?? '4';
+    batchSizeInput.value = localStorage.getItem('batch-bars') ?? '1';
     batchSizeInput.addEventListener('change', () => {
-      const v = Math.max(1, Math.min(16, parseInt(batchSizeInput.value) || 4));
+      const v = Math.max(1, Math.min(4, parseInt(batchSizeInput.value) || 1));
       batchSizeInput.value = v;
-      localStorage.setItem('batch-size', v);
+      localStorage.setItem('batch-bars', v);
     });
     batchSizeInput.addEventListener('keydown', e => {
       if (e.key === 'Enter') { batchSizeInput.blur(); closeSettings(); }
@@ -726,7 +726,7 @@ E4`;
 
     // ── Game logic ───────────────────────────────────────────────────
     function newBatch(prevNote = null) {
-      const size = Math.min(parseInt(batchSizeInput.value) || 4, pool.length);
+      const size = Math.min((parseInt(batchSizeInput.value) || 1) * NOTES_PER_BAR, pool.length);
       const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
       batch         = addIntervals(result.batch, pool.length);
       lastStepDir   = result.lastDir;
