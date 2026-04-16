@@ -917,6 +917,7 @@ function renderConfigView(notes) {
       btn.hidden  = connected;
       name.hidden = !connected;
       if (connected) name.textContent = '⬤ ' + inputs[0].name;
+      document.getElementById('answer-row').style.display = connected ? 'none' : '';
     }
 
     function initMIDI() {
