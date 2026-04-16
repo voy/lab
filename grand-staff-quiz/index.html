@@ -387,6 +387,13 @@
       </div>
 
       <div class="modal-section">
+        <div class="modal-section-title">Display</div>
+        <label class="setting-row">
+          <input type="checkbox" id="show-stats-check"> Show performance stats
+        </label>
+      </div>
+
+      <div class="modal-section">
         <div class="modal-section-title">Debug</div>
         <label class="setting-row">
           <input type="checkbox" id="click-clef-check"> Click staff to answer
@@ -510,6 +517,15 @@ E4`;
       if (octave < 0 || octave > 9) return null;
       return { name, key: `${name.toLowerCase()}/${octave}` };
     }
+
+    const showStatsCheck = document.getElementById('show-stats-check');
+    showStatsCheck.checked = localStorage.getItem('show-stats') === 'true';
+    function applyShowStats() {
+      localStorage.setItem('show-stats', showStatsCheck.checked);
+      document.getElementById('streak-row').style.visibility = showStatsCheck.checked ? '' : 'hidden';
+    }
+    showStatsCheck.addEventListener('change', applyShowStats);
+    applyShowStats();
 
     const clickClefCheck = document.getElementById('click-clef-check');
     clickClefCheck.checked = localStorage.getItem('click-clef') === 'true';
