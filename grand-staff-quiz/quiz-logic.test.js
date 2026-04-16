@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch } from './quiz-logic.js';
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch } = require('./quiz-logic.js');
 
 // ── parseClef ────────────────────────────────────────────────────────────────
 
