@@ -261,6 +261,16 @@
       user-select: none;
     }
     .setting-row input[type="checkbox"] { cursor: pointer; accent-color: var(--accent-dim); width: 15px; height: 15px; }
+    .setting-row input[type="number"] {
+      width: 48px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 2px 6px;
+      text-align: center;
+    }
 
     #textareas-row {
       display: flex;
@@ -394,6 +404,9 @@
         <label class="setting-row">
           <input type="checkbox" id="show-stats-check"> Show performance stats
         </label>
+        <div class="setting-row">
+          <input type="number" id="batch-size-input" min="1" max="12" value="4"> Notes per batch
+        </div>
       </div>
 
       <div class="modal-section">
@@ -516,6 +529,14 @@ E4`;
     ignoreOctaveCheck.checked = localStorage.getItem('ignore-octave') === 'true';
     ignoreOctaveCheck.addEventListener('change', () => {
       localStorage.setItem('ignore-octave', ignoreOctaveCheck.checked);
+    });
+
+    const batchSizeInput = document.getElementById('batch-size-input');
+    batchSizeInput.value = localStorage.getItem('batch-size') ?? '4';
+    batchSizeInput.addEventListener('change', () => {
+      const v = Math.max(1, Math.min(12, parseInt(batchSizeInput.value) || 4));
+      batchSizeInput.value = v;
+      localStorage.setItem('batch-size', v);
     });
 
     const showStatsCheck = document.getElementById('show-stats-check');
@@ -657,7 +678,7 @@ E4`;
 
     // ── Game logic ───────────────────────────────────────────────────
     function newBatch(prevNote = null) {
-      const size = Math.min(3 + Math.round(Math.random()), pool.length);
+      const size = Math.min(parseInt(batchSizeInput.value) || 4, pool.length);
       const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
       batch         = result.batch;
       lastStepDir   = result.lastDir;
