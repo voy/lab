@@ -18,6 +18,23 @@ You can configure exactly which notes to drill — useful for targeting specific
 
 Accuracy is tracked as a rolling average over the last 20 answers so you can see how you're doing right now, not just historically. Streak is tracked separately because the two measure different things.
 
+## Setting up MIDI on macOS
+
+**Wired keyboard:** plug in via USB — Chrome picks it up automatically when you click Connect MIDI in settings.
+
+**Bluetooth keyboard:** macOS requires one manual step before the browser can see it.
+
+1. Open **Audio MIDI Setup** (Spotlight → "Audio MIDI Setup", or `/Applications/Utilities/`)
+2. Open the MIDI Studio window: **Window → Show MIDI Studio** (⌘2)
+3. Click the **Bluetooth** button in the toolbar (the Bluetooth icon, top centre)
+4. Your keyboard should appear in the list — click **Connect**
+5. Once connected here it shows up as a regular MIDI device in Chrome
+6. Back in the quiz, open Settings, click **Connect MIDI**, then play a note to confirm
+
+The connection persists across browser sessions as long as Bluetooth stays paired in Audio MIDI Setup. If it drops, re-open Audio MIDI Setup and reconnect — you don't need to touch the quiz.
+
+**Browser:** the Web MIDI API is supported in Chrome and Edge. Safari and Firefox don't support it.
+
 ## Stack
 
 Single HTML file, vanilla JavaScript. Uses [VexFlow](https://www.vexflow.com/) for rendering the musical notation. No build step.
