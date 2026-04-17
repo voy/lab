@@ -213,10 +213,12 @@
     <rect x="68" y="68" width="14" height="10" fill="var(--skyline-b)" rx="1"/>
     <!-- Shaft (concave profile: narrow below sphere, flaring toward the base) -->
     <path d="M72.3,68 C73,58 73.4,43 73.5,33 L76.5,33 C76.6,43 77,58 77.7,68 Z" fill="var(--skyline-b)"/>
-    <!-- Sphere -->
-    <circle cx="75" cy="28" r="6" fill="var(--skyline-c)"/>
-    <!-- Sphere equatorial band -->
-    <ellipse cx="75" cy="28" rx="6" ry="1.6" fill="none" stroke="var(--skyline-d)" stroke-width="1"/>
+    <!-- Sphere lower hemisphere -->
+    <path d="M 69,28 A 6,6 0 0 0 81,28 Z" fill="var(--skyline-c)"/>
+    <!-- Equatorial band (rx tucked inside the sphere so the stroke doesn't wing out) -->
+    <ellipse cx="75" cy="28" rx="5.5" ry="1.6" fill="none" stroke="var(--skyline-d)" stroke-width="1"/>
+    <!-- Sphere upper hemisphere (drawn on top to mask the band's back arc) -->
+    <path d="M 69,28 A 6,6 0 0 1 81,28 Z" fill="var(--skyline-c)"/>
     <!-- Needle -->
     <rect x="74.5" y="3" width="1" height="19" fill="var(--skyline-d)"/>
     <!-- Fernsehturm aviation beacon -->
