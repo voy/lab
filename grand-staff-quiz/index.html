@@ -760,8 +760,11 @@ E4`;
       if (answerHistory.length > ACCURACY_WINDOW) answerHistory.shift();
       if (isCorrect) {
         streak++;
-        speedHistory.push(Date.now() - questionStartTime);
-        if (speedHistory.length > SPEED_WINDOW) speedHistory.shift();
+        const elapsed = Date.now() - questionStartTime;
+        if (elapsed <= SPEED_MAX_MS) {
+          speedHistory.push(elapsed);
+          if (speedHistory.length > SPEED_WINDOW) speedHistory.shift();
+        }
       } else {
         streak = 0;
       }
