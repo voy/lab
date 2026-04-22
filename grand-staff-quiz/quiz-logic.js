@@ -145,6 +145,7 @@ const ACCURACY_WINDOW = 20;
 const SPEED_WINDOW    = 20;
 const SPEED_MIN_ACC   = 0.80;
 const SPEED_MIN_N     = 3;
+const SPEED_MAX_MS    = 5000;
 
 // Display-ready stats from raw history.
 // Speed is gated: needs ≥SPEED_MIN_N samples AND ≥SPEED_MIN_ACC accuracy.
@@ -171,6 +172,6 @@ if (typeof module !== 'undefined') {
     weightedShuffle, buildBatch, pitchVal, addIntervals,
     stepToNote, midiToNote,
     isCorrectAnswer, computeStats,
-    ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N,
+    ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N, SPEED_MAX_MS,
   };
 }
