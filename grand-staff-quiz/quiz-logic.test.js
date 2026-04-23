@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals, stepToNote, midiToNote, isCorrectAnswer, computeStats } = require('./quiz-logic.js');
+const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals, melodicSegment, buildMelodicBatch, stepToNote, midiToNote, isCorrectAnswer, computeStats } = require('./quiz-logic.js');
 
 // ── parseClef ────────────────────────────────────────────────────────────────
 
@@ -313,6 +313,113 @@ describe('addIntervals', () => {
     // alternating clefs — nothing to reorder
     const result = addIntervals([c4t, g2b, e4t, g2b], 8, neverMerge);
     assert.deepEqual(result, [c4t, g2b, e4t, g2b]);
+  });
+});
+
+// ── melodicSegment ───────────────────────────────────────────────────────────
+
+describe('melodicSegment', () => {
+  const sorted = TREBLE_NOTES; // C4…C5, already ascending by pitchVal
+
+  it('returns [] for an empty pool', () => {
+    assert.deepEqual(melodicSegment([], 4), []);
+  });
+
+  it('returns exactly size notes', () => {
+    assert.equal(melodicSegment(sorted, 6).length, 6);
+    assert.equal(melodicSegment(sorted, 1).length, 1);
+  });
+
+  it('all notes come from the sorted pool', () => {
+    const ids = new Set(sorted.map(n => n.key));
+    for (const n of melodicSegment(sorted, 10)) {
+      assert.ok(ids.has(n.key), `unexpected note ${n.key}`);
+    }
+  });
+
+  it('post-leap tends toward step (statistical)', () => {
+    let stepAfterLeap = 0, totalAfterLeap = 0;
+    for (let run = 0; run < 200; run++) {
+      const seg = melodicSegment(sorted, 10, Math.random);
+      for (let i = 1; i < seg.length - 1; i++) {
+        const pos  = n => sorted.indexOf(n);
+        const prev = Math.abs(pos(seg[i])   - pos(seg[i - 1]));
+        const next = Math.abs(pos(seg[i + 1]) - pos(seg[i]));
+        if (prev >= 2) { totalAfterLeap++; if (next === 1) stepAfterLeap++; }
+      }
+    }
+    assert.ok(totalAfterLeap > 0, 'no leaps generated — pool may be too small');
+    assert.ok(
+      stepAfterLeap / totalAfterLeap > 0.55,
+      `post-leap step rate too low: ${stepAfterLeap}/${totalAfterLeap}`,
+    );
+  });
+
+  it('post-step tends toward leap (statistical)', () => {
+    let leapAfterStep = 0, totalAfterStep = 0;
+    for (let run = 0; run < 200; run++) {
+      const seg = melodicSegment(sorted, 10, Math.random);
+      for (let i = 1; i < seg.length - 1; i++) {
+        const pos  = n => sorted.indexOf(n);
+        const prev = Math.abs(pos(seg[i])   - pos(seg[i - 1]));
+        const next = Math.abs(pos(seg[i + 1]) - pos(seg[i]));
+        if (prev === 1) { totalAfterStep++; if (next >= 2) leapAfterStep++; }
+      }
+    }
+    assert.ok(totalAfterStep > 0, 'no steps generated');
+    assert.ok(
+      leapAfterStep / totalAfterStep > 0.55,
+      `post-step leap rate too low: ${leapAfterStep}/${totalAfterStep}`,
+    );
+  });
+});
+
+// ── buildMelodicBatch ────────────────────────────────────────────────────────
+
+describe('buildMelodicBatch', () => {
+  const seqRand = (...vals) => { let i = 0; return () => vals[i++ % vals.length]; };
+
+  it('returns [] for an empty pool', () => {
+    assert.deepEqual(buildMelodicBatch([], 8), []);
+  });
+
+  it('returns [] for size 0', () => {
+    assert.deepEqual(buildMelodicBatch(MIXED_POOL, 0), []);
+  });
+
+  it('returns exactly size notes', () => {
+    const result = buildMelodicBatch(MIXED_POOL, 8, Math.random);
+    assert.equal(result.length, 8);
+  });
+
+  it('all notes come from the input pool', () => {
+    const poolIds = new Set(MIXED_POOL.map(n => n.key + n.clef));
+    const result = buildMelodicBatch(MIXED_POOL, 12, Math.random);
+    for (const n of result) {
+      assert.ok(poolIds.has(n.key + n.clef), `unexpected note ${n.key} ${n.clef}`);
+    }
+  });
+
+  it('contains notes from both clefs when both clefs have notes', () => {
+    // Run several times; with random segments each run is very likely to include both clefs
+    let sawBoth = false;
+    for (let i = 0; i < 20; i++) {
+      const result = buildMelodicBatch(MIXED_POOL, 16, Math.random);
+      const clefs = new Set(result.map(n => n.clef));
+      if (clefs.has('treble') && clefs.has('bass')) { sawBoth = true; break; }
+    }
+    assert.ok(sawBoth, 'expected at least one run to include both clefs');
+  });
+
+  it('uses only available clef when one pool is empty', () => {
+    const result = buildMelodicBatch(TREBLE_NOTES, 8, Math.random);
+    assert.equal(result.length, 8);
+    for (const n of result) assert.equal(n.clef, 'treble');
+  });
+
+  it('returns correct size with deterministic rand', () => {
+    const result = buildMelodicBatch(MIXED_POOL, 16, seqRand(0));
+    assert.equal(result.length, 16);
   });
 });
 

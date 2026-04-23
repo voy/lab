@@ -411,6 +411,13 @@
       </div>
 
       <div class="modal-section">
+        <div class="modal-section-title">Practice</div>
+        <label class="setting-row">
+          <input type="checkbox" id="melody-mode-check"> Melody mode (single staff, musical intervals)
+        </label>
+      </div>
+
+      <div class="modal-section">
         <div class="modal-section-title">Debug</div>
         <label class="setting-row">
           <input type="checkbox" id="click-clef-check"> Click staff to answer
@@ -561,6 +568,14 @@ E4`;
     clickClefCheck.addEventListener('change', applyClickClef);
     applyClickClef();
 
+    const melodyModeCheck = document.getElementById('melody-mode-check');
+    let melodyMode = localStorage.getItem('melody-mode') === 'true';
+    melodyModeCheck.checked = melodyMode;
+    melodyModeCheck.addEventListener('change', () => {
+      melodyMode = melodyModeCheck.checked;
+      localStorage.setItem('melody-mode', melodyMode);
+    });
+
     staffContainer.addEventListener('click', e => {
       if (!clickClefCheck.checked || !trebleStave || !bassStave) return;
       const svg = staffContainer.querySelector('svg');
@@ -709,11 +724,18 @@ E4`;
 
     // ── Game logic ───────────────────────────────────────────────────
     function newBatch(prevNote = null) {
-      const size = Math.min((parseInt(batchSizeInput.value) || 1) * NOTES_PER_BAR, pool.length);
-      const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
-      batch         = addIntervals(result.batch, pool.length);
-      lastStepDir   = result.lastDir;
-      lastClefRun   = result.clefRun;
+      if (melodyMode) {
+        const size = (parseInt(batchSizeInput.value) || 1) * NOTES_PER_BAR;
+        batch       = buildMelodicBatch(pool, size);
+        lastStepDir = 0;
+        lastClefRun = 0;
+      } else {
+        const size = Math.min((parseInt(batchSizeInput.value) || 1) * NOTES_PER_BAR, pool.length);
+        const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
+        batch         = addIntervals(result.batch, pool.length);
+        lastStepDir   = result.lastDir;
+        lastClefRun   = result.clefRun;
+      }
       batchIdx      = 0;
       batchFeedback = [];
     }
