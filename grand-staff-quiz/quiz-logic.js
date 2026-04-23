@@ -108,6 +108,53 @@ function addIntervals(notes, poolSize, rand = Math.random) {
   return out;
 }
 
+function melodicSegment(sorted, size, rand = Math.random) {
+  if (sorted.length === 0) return [];
+  const n = sorted.length;
+  let idx = Math.max(0, Math.min(n - 1, Math.round(n * 0.3 + rand() * n * 0.4)));
+  let dir = rand() >= 0.5 ? 1 : -1;
+  let segRemaining = 1 + Math.floor(rand() * 3);
+  let prevStep = 0;
+  const result = [];
+  for (let i = 0; i < size; i++) {
+    result.push(sorted[idx]);
+    if (i === size - 1) break;
+    const r = rand();
+    // Post-leap: land by step. Post-step: take a leap. Default: favour thirds.
+    const step = prevStep >= 2 ? (r < 0.65 ? 1 : r < 0.90 ? 2 : r < 0.97 ? 3 : 4)
+               : prevStep === 1 ? (r < 0.10 ? 1 : r < 0.60 ? 2 : r < 0.85 ? 3 : 4)
+               :                  (r < 0.25 ? 1 : r < 0.65 ? 2 : r < 0.85 ? 3 : 4);
+    prevStep = step;
+    segRemaining--;
+    const atBoundary = (dir > 0 && idx + step >= n) || (dir < 0 && idx - step < 0);
+    // After a leap, tend to reverse direction
+    if (segRemaining <= 0 || atBoundary || (step >= 2 && rand() < 0.65)) {
+      dir *= -1;
+      segRemaining = 1 + Math.floor(rand() * 3);
+    }
+    idx = Math.max(0, Math.min(n - 1, idx + dir * step));
+  }
+  return result;
+}
+
+function buildMelodicBatch(pool, size, rand = Math.random) {
+  if (pool.length === 0 || size === 0) return [];
+  const sort = arr => [...arr].sort((a, b) => pitchVal(a) - pitchVal(b));
+  const treblePool = sort(pool.filter(n => n.clef === 'treble'));
+  const bassPool   = sort(pool.filter(n => n.clef === 'bass'));
+  const result = [];
+  let clef = rand() >= 0.5 ? 'treble' : 'bass';
+  while (result.length < size) {
+    const remaining = size - result.length;
+    const segLen = Math.min(4 + Math.floor(rand() * 3), remaining);
+    let clefPool = clef === 'treble' ? treblePool : bassPool;
+    if (clefPool.length === 0) clefPool = clef === 'treble' ? bassPool : treblePool;
+    result.push(...melodicSegment(clefPool, segLen, rand));
+    clef = rand() >= 0.5 ? 'treble' : 'bass';
+  }
+  return result;
+}
+
 // Diatonic note at `steps` above the bottom line of the given clef.
 // Treble bottom line = E4, bass bottom line = G2.
 function stepToNote(steps, clef) {
@@ -170,6 +217,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     parseClef, stepDir, isValidNext, isLedgerNote,
     weightedShuffle, buildBatch, pitchVal, addIntervals,
+    melodicSegment, buildMelodicBatch,
     stepToNote, midiToNote,
     isCorrectAnswer, computeStats,
     ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N, SPEED_MAX_MS,
