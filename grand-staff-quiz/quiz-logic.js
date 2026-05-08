@@ -188,14 +188,16 @@ function isCorrectAnswer(name, key, currentNote, ignoreOctave) {
   return name === currentNote.name;
 }
 
-const ACCURACY_WINDOW = 20;
-const SPEED_WINDOW    = 20;
-const SPEED_MIN_ACC   = 0.80;
-const SPEED_MIN_N     = 3;
-const SPEED_MAX_MS    = 5000;
+const ACCURACY_WINDOW    = 20;
+const SPEED_WINDOW       = 20;
+const SPEED_MIN_ACC      = 0.80;
+const SPEED_MIN_N        = 3;
+const SPEED_TRIM_FRAC    = 0.1;
 
 // Display-ready stats from raw history.
 // Speed is gated: needs ≥SPEED_MIN_N samples AND ≥SPEED_MIN_ACC accuracy.
+// Speed value is an upper-trimmed mean: the slowest SPEED_TRIM_FRAC of samples
+// are discarded before averaging, to absorb occasional distracted-answer outliers.
 function computeStats(answerHistory, speedHistory) {
   const n = answerHistory.length;
   const correct = answerHistory.filter(Boolean).length;
@@ -205,7 +207,13 @@ function computeStats(answerHistory, speedHistory) {
   const accRate   = n === 0 ? 0 : correct / n;
   const sn        = speedHistory.length;
   const showSpeed = sn >= SPEED_MIN_N && accRate >= SPEED_MIN_ACC;
-  const speedMs   = showSpeed ? speedHistory.reduce((a, b) => a + b, 0) / sn : null;
+
+  let speedMs = null;
+  if (showSpeed) {
+    const trim = Math.floor(sn * SPEED_TRIM_FRAC);
+    const kept = [...speedHistory].sort((a, b) => a - b).slice(0, sn - trim);
+    speedMs = kept.reduce((a, b) => a + b, 0) / kept.length;
+  }
   const speedLabel = showSpeed
     ? (sn < SPEED_WINDOW ? `${sn}/${SPEED_WINDOW}` : `last ${SPEED_WINDOW}`)
     : null;
@@ -220,6 +228,6 @@ if (typeof module !== 'undefined') {
     melodicSegment, buildMelodicBatch,
     stepToNote, midiToNote,
     isCorrectAnswer, computeStats,
-    ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N, SPEED_MAX_MS,
+    ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N, SPEED_TRIM_FRAC,
   };
 }
