@@ -536,6 +536,24 @@ describe('computeStats', () => {
     const s = computeStats([true, true, true, true, false], [1000, 1000, 1000, 1000]);
     assert.notEqual(s.speedMs, null);
   });
+
+  it('drops the slowest 10% before averaging speed (upper-trimmed mean)', () => {
+    // 20 samples: 18 fast (1000ms), 2 slow outliers (10000ms).
+    // Untrimmed mean = 1900ms. Trim count = floor(20 * 0.1) = 2 → mean of 18 × 1000 = 1000.
+    const answers = Array(20).fill(true);
+    const speeds  = [...Array(18).fill(1000), 10000, 10000];
+    const s = computeStats(answers, speeds);
+    assert.equal(s.speedMs, 1000);
+  });
+
+  it('does not trim below 10 samples (floor(n*0.1) = 0)', () => {
+    // 9 samples: trim count = floor(9 * 0.1) = 0, so straight mean.
+    const answers = Array(9).fill(true);
+    const speeds  = [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 10000];
+    const s = computeStats(answers, speeds);
+    // (8 * 1000 + 10000) / 9 = 2000
+    assert.equal(s.speedMs, 2000);
+  });
 });
 
 describe('midiToNote', () => {

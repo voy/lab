@@ -262,6 +262,12 @@
       user-select: none;
     }
     .setting-row input[type="checkbox"] { cursor: pointer; accent-color: var(--accent-dim); width: 15px; height: 15px; }
+    .setting-hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 2px 0 4px 23px;
+      line-height: 1.4;
+    }
     .setting-row input[type="number"] {
       width: 48px;
       background: var(--bg);
@@ -405,6 +411,9 @@
         <label class="setting-row">
           <input type="checkbox" id="show-stats-check"> Show performance stats
         </label>
+        <div class="setting-hint">
+          Speed averages your last 20 correct answers, dropping the slowest 10% to ignore distractions. Hidden until accuracy reaches 80%.
+        </div>
         <div class="setting-row">
           <input type="number" id="batch-size-input" min="1" max="4" value="1"> Bars per batch
         </div>
@@ -782,11 +791,8 @@ E4`;
       if (answerHistory.length > ACCURACY_WINDOW) answerHistory.shift();
       if (isCorrect) {
         streak++;
-        const elapsed = Date.now() - questionStartTime;
-        if (elapsed <= SPEED_MAX_MS) {
-          speedHistory.push(elapsed);
-          if (speedHistory.length > SPEED_WINDOW) speedHistory.shift();
-        }
+        speedHistory.push(Date.now() - questionStartTime);
+        if (speedHistory.length > SPEED_WINDOW) speedHistory.shift();
       } else {
         streak = 0;
       }
