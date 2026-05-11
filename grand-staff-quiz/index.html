@@ -312,6 +312,38 @@
     }
     .clef-textarea:focus { border-color: var(--accent-dim); }
 
+    #slowest-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .slowest-label {
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    #slowest-list {
+      flex: 1;
+      min-width: 0;
+      color: var(--text);
+    }
+    #reset-stats-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    #reset-stats-btn:hover { color: var(--text); }
+
     #modal-footer {
       display: flex;
       align-items: center;
@@ -433,6 +465,17 @@
         <label class="setting-row">
           <input type="checkbox" id="melody-mode-check"> Melody mode (single staff, musical intervals)
         </label>
+        <label class="setting-row">
+          <input type="checkbox" id="adaptive-mode-check"> Adaptive weighting (drill your slowest notes)
+        </label>
+        <div class="setting-hint">
+          Tracks your time per note and biases the lottery toward the ones that are dragging your average down.
+        </div>
+        <div id="slowest-row">
+          <span class="slowest-label">Slowest:</span>
+          <span id="slowest-list">No data yet — play a few rounds with adaptive on and check back.</span>
+          <button id="reset-stats-btn">Reset</button>
+        </div>
       </div>
 
       <div class="modal-section">
@@ -482,7 +525,8 @@ C4
 D4
 E4`;
 
-    const STORAGE_KEY = 'grand-staff-pool-v2';
+    const STORAGE_KEY       = 'grand-staff-pool-v2';
+    const STATS_STORAGE_KEY = 'note-stats-v1';
 
     function loadTexts() {
       try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
@@ -492,6 +536,14 @@ E4`;
         treble: treble.replace(/\\n/g, '\n'),
         bass:   bass.replace(/\\n/g, '\n'),
       }));
+    }
+
+    function loadNoteStats() {
+      try { return JSON.parse(localStorage.getItem(STATS_STORAGE_KEY)) || {}; }
+      catch { return {}; }
+    }
+    function saveNoteStats(stats) {
+      localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify(stats));
     }
 
     // ── VexFlow constants ────────────────────────────────────────────
@@ -592,6 +644,43 @@ E4`;
     melodyModeCheck.addEventListener('change', () => {
       melodyMode = melodyModeCheck.checked;
       localStorage.setItem('melody-mode', melodyMode);
+    });
+
+    // ── Adaptive weighting ──────────────────────────────────────────
+    const adaptiveModeCheck = document.getElementById('adaptive-mode-check');
+    let adaptiveMode = localStorage.getItem('adaptive-mode') === 'true';
+    let noteStats    = loadNoteStats();
+    adaptiveModeCheck.checked = adaptiveMode;
+    adaptiveModeCheck.addEventListener('change', () => {
+      adaptiveMode = adaptiveModeCheck.checked;
+      localStorage.setItem('adaptive-mode', adaptiveMode);
+      renderSlowestNotes();
+    });
+
+    function formatNoteLabel(key, clef) {
+      const name   = key[0].toUpperCase();
+      const octave = key.slice(2);
+      const c      = clef === 'treble' ? 'T' : 'B';
+      return `${name}${octave} (${c})`;
+    }
+
+    function renderSlowestNotes() {
+      const top = topSlowestNotes(noteStats, 3);
+      const el  = document.getElementById('slowest-list');
+      if (!el) return;
+      if (top.length === 0) {
+        el.textContent = 'No data yet — play a few rounds with adaptive on and check back.';
+        return;
+      }
+      el.textContent = top
+        .map(t => `${formatNoteLabel(t.key, t.clef)} ${(t.medianMs / 1000).toFixed(1)}s`)
+        .join(' · ');
+    }
+
+    document.getElementById('reset-stats-btn').addEventListener('click', () => {
+      noteStats = {};
+      saveNoteStats(noteStats);
+      renderSlowestNotes();
     });
 
     staffContainer.addEventListener('click', e => {
@@ -749,7 +838,12 @@ E4`;
         lastClefRun = 0;
       } else {
         const size = Math.min((parseInt(batchSizeInput.value) || 1) * NOTES_PER_BAR, pool.length);
-        const result = buildBatch(weightedShuffle(pool), prevNote, lastStepDir, lastClefRun, size);
+        let getWeight = null;
+        if (adaptiveMode) {
+          const g = globalNoteMedian(noteStats);
+          getWeight = n => noteAdaptiveWeight(noteStats, noteId(n), g);
+        }
+        const result = buildBatch(weightedShuffle(pool, getWeight), prevNote, lastStepDir, lastClefRun, size);
         batch         = addIntervals(result.batch, pool.length);
         lastStepDir   = result.lastDir;
         lastClefRun   = result.clefRun;
@@ -800,8 +894,11 @@ E4`;
       if (answerHistory.length > ACCURACY_WINDOW) answerHistory.shift();
       if (isCorrect) {
         streak++;
-        speedHistory.push(Date.now() - questionStartTime);
+        const latency = Date.now() - questionStartTime;
+        speedHistory.push(latency);
         if (speedHistory.length > SPEED_WINDOW) speedHistory.shift();
+        noteStats = recordSample(noteStats, noteId(currentNote), latency);
+        saveNoteStats(noteStats);
       } else {
         streak = 0;
       }
@@ -871,6 +968,7 @@ E4`;
 
     function openSettings() {
       pauseGame();
+      renderSlowestNotes();
       modalBackdrop.classList.add('open');
     }
 

@@ -1,6 +1,6 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals, melodicSegment, buildMelodicBatch, stepToNote, midiToNote, isCorrectAnswer, computeStats } = require('./quiz-logic.js');
+const { parseClef, stepDir, isValidNext, isLedgerNote, weightedShuffle, buildBatch, pitchVal, addIntervals, melodicSegment, buildMelodicBatch, stepToNote, midiToNote, isCorrectAnswer, computeStats, noteId, median, recordSample, globalNoteMedian, noteAdaptiveWeight, topSlowestNotes, ADAPTIVE_EXPLORE_WEIGHT, ADAPTIVE_MAX_WEIGHT } = require('./quiz-logic.js');
 
 // ── parseClef ────────────────────────────────────────────────────────────────
 
@@ -156,8 +156,6 @@ const POOL = [
   staffNote('B', 3, 'bass'),   // ledger bass (above A3)
 ];
 
-function noteId(n) { return n.key + n.clef; }
-
 describe('weightedShuffle', () => {
   it('contains every unique note exactly once', () => {
     const result = weightedShuffle(POOL);
@@ -166,6 +164,35 @@ describe('weightedShuffle', () => {
     assert.equal(uniqueIds.size, POOL.length, 'no duplicates');
     assert.equal(ids.length, POOL.length, 'no notes dropped');
     for (const n of POOL) assert.ok(uniqueIds.has(noteId(n)), `missing ${noteId(n)}`);
+  });
+
+  it('still dedupes when a custom weight function is provided', () => {
+    const result = weightedShuffle(POOL, () => 4);
+    const ids = result.map(noteId);
+    assert.equal(new Set(ids).size, POOL.length);
+    assert.equal(ids.length, POOL.length);
+  });
+
+  it('treats weight <1 as 1 (no notes dropped)', () => {
+    const result = weightedShuffle(POOL, () => 0);
+    assert.equal(result.length, POOL.length);
+  });
+
+  it('biases ordering: heavy-weight notes land earlier on average', () => {
+    // Give the first POOL note weight 4, others weight 1.
+    // Over many shuffles, the heavy note should appear in the first half more often.
+    const heavy = POOL[0];
+    const heavyId = noteId(heavy);
+    let firstHalfCount = 0;
+    const runs = 400;
+    for (let i = 0; i < runs; i++) {
+      const result = weightedShuffle(POOL, n => noteId(n) === heavyId ? 4 : 1);
+      const idx = result.findIndex(n => noteId(n) === heavyId);
+      if (idx < Math.floor(result.length / 2)) firstHalfCount++;
+    }
+    // Uniform random would give ~50%; weight-4 should push well above that.
+    assert.ok(firstHalfCount / runs > 0.6,
+      `heavy note in first half only ${firstHalfCount}/${runs}`);
   });
 });
 
@@ -553,6 +580,211 @@ describe('computeStats', () => {
     const s = computeStats(answers, speeds);
     // (8 * 1000 + 10000) / 9 = 2000
     assert.equal(s.speedMs, 2000);
+  });
+});
+
+// ── median ───────────────────────────────────────────────────────────────────
+
+describe('median', () => {
+  it('returns null for empty or null input', () => {
+    assert.equal(median([]), null);
+    assert.equal(median(null), null);
+    assert.equal(median(undefined), null);
+  });
+
+  it('returns the middle value for odd-length arrays', () => {
+    assert.equal(median([3, 1, 2]), 2);
+    assert.equal(median([7]), 7);
+  });
+
+  it('returns the average of the two middles for even-length arrays', () => {
+    assert.equal(median([1, 2, 3, 4]), 2.5);
+    assert.equal(median([10, 20]), 15);
+  });
+
+  it('does not mutate the input', () => {
+    const input = [3, 1, 2];
+    median(input);
+    assert.deepEqual(input, [3, 1, 2]);
+  });
+});
+
+// ── recordSample ─────────────────────────────────────────────────────────────
+
+describe('recordSample', () => {
+  it('appends a sample to an empty bucket', () => {
+    const next = recordSample({}, 'c/4|treble', 800);
+    assert.deepEqual(next, { 'c/4|treble': [800] });
+  });
+
+  it('appends to an existing bucket', () => {
+    const next = recordSample({ 'c/4|treble': [800] }, 'c/4|treble', 900);
+    assert.deepEqual(next['c/4|treble'], [800, 900]);
+  });
+
+  it('caps the buffer at `cap`, dropping oldest', () => {
+    const next = recordSample({ 'c/4|treble': [1, 2, 3] }, 'c/4|treble', 4, 3);
+    assert.deepEqual(next['c/4|treble'], [2, 3, 4]);
+  });
+
+  it('does not mutate the input stats object', () => {
+    const stats = { 'c/4|treble': [800] };
+    recordSample(stats, 'c/4|treble', 900);
+    assert.deepEqual(stats, { 'c/4|treble': [800] });
+  });
+
+  it('leaves other notes untouched', () => {
+    const stats = { 'c/4|treble': [800], 'g/2|bass': [600] };
+    const next = recordSample(stats, 'c/4|treble', 900);
+    assert.deepEqual(next['g/2|bass'], [600]);
+  });
+});
+
+// ── globalNoteMedian ─────────────────────────────────────────────────────────
+
+describe('globalNoteMedian', () => {
+  it('returns null when stats is empty', () => {
+    assert.equal(globalNoteMedian({}), null);
+  });
+
+  it('returns null when no note has enough samples', () => {
+    const stats = { 'c/4|treble': [800, 900] }; // 2 samples, below default min 3
+    assert.equal(globalNoteMedian(stats), null);
+  });
+
+  it('returns the median of per-note medians', () => {
+    // Per-note medians: 100, 300, 500. Median of those = 300.
+    const stats = {
+      'a|t': [100, 100, 100],
+      'b|t': [300, 300, 300],
+      'c|t': [500, 500, 500],
+    };
+    assert.equal(globalNoteMedian(stats), 300);
+  });
+
+  it('weights each note equally regardless of sample count', () => {
+    // "a" has 10 fast samples, "b" has 3 slow ones. Each contributes one median.
+    const stats = {
+      'a|t': Array(10).fill(100),
+      'b|t': [900, 900, 900],
+    };
+    // medians: 100, 900 → median of those = 500
+    assert.equal(globalNoteMedian(stats), 500);
+  });
+
+  it('honours custom minSamples', () => {
+    const stats = { 'a|t': [200], 'b|t': [400] };
+    // With minSamples=1, both qualify; median of [200, 400] = 300.
+    assert.equal(globalNoteMedian(stats, 1), 300);
+  });
+});
+
+// ── noteAdaptiveWeight ───────────────────────────────────────────────────────
+
+describe('noteAdaptiveWeight', () => {
+  it('returns the explore weight for an unmeasured note', () => {
+    assert.equal(noteAdaptiveWeight({}, 'c/4|treble', 800), ADAPTIVE_EXPLORE_WEIGHT);
+  });
+
+  it('returns the explore weight when samples are below the threshold', () => {
+    const stats = { 'c/4|treble': [800, 900] }; // 2 samples
+    assert.equal(noteAdaptiveWeight(stats, 'c/4|treble', 800), ADAPTIVE_EXPLORE_WEIGHT);
+  });
+
+  it('returns the explore weight when global median is null', () => {
+    const stats = { 'c/4|treble': [800, 900, 1000] };
+    assert.equal(noteAdaptiveWeight(stats, 'c/4|treble', null), ADAPTIVE_EXPLORE_WEIGHT);
+  });
+
+  it('returns 1 for a note at the global median', () => {
+    const stats = { 'c/4|treble': [800, 800, 800] };
+    assert.equal(noteAdaptiveWeight(stats, 'c/4|treble', 800), 1);
+  });
+
+  it('returns 2 for a note ~2× the global median', () => {
+    const stats = { 'c/4|treble': [1600, 1600, 1600] };
+    assert.equal(noteAdaptiveWeight(stats, 'c/4|treble', 800), 2);
+  });
+
+  it('clamps to ADAPTIVE_MAX_WEIGHT for very slow notes', () => {
+    const stats = { 'c/4|treble': [10000, 10000, 10000] };
+    assert.equal(noteAdaptiveWeight(stats, 'c/4|treble', 800), ADAPTIVE_MAX_WEIGHT);
+  });
+
+  it('clamps to 1 for notes faster than the global median', () => {
+    const stats = { 'c/4|treble': [100, 100, 100] };
+    assert.equal(noteAdaptiveWeight(stats, 'c/4|treble', 800), 1);
+  });
+});
+
+// ── topSlowestNotes ──────────────────────────────────────────────────────────
+
+describe('topSlowestNotes', () => {
+  it('returns [] for empty stats', () => {
+    assert.deepEqual(topSlowestNotes({}), []);
+  });
+
+  it('filters out notes with insufficient samples', () => {
+    const stats = {
+      'c/4|treble': [800, 900],         // below threshold
+      'd/4|treble': [1000, 1100, 1200], // qualifies
+    };
+    const result = topSlowestNotes(stats);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].key, 'd/4');
+  });
+
+  it('sorts descending by median latency', () => {
+    const stats = {
+      'a/4|treble': [500, 500, 500],
+      'b/4|treble': [1500, 1500, 1500],
+      'c/4|treble': [1000, 1000, 1000],
+    };
+    const result = topSlowestNotes(stats);
+    assert.deepEqual(result.map(r => r.key), ['b/4', 'c/4', 'a/4']);
+  });
+
+  it('limits to n entries', () => {
+    const stats = {
+      'a/4|treble': [100, 100, 100],
+      'b/4|treble': [200, 200, 200],
+      'c/4|treble': [300, 300, 300],
+      'd/4|treble': [400, 400, 400],
+    };
+    assert.equal(topSlowestNotes(stats, 2).length, 2);
+  });
+
+  it('returns {key, clef, medianMs} entries', () => {
+    const stats = { 'c/4|treble': [800, 800, 800] };
+    const [entry] = topSlowestNotes(stats);
+    assert.equal(entry.key, 'c/4');
+    assert.equal(entry.clef, 'treble');
+    assert.equal(entry.medianMs, 800);
+  });
+
+  it('honours custom minSamples', () => {
+    const stats = { 'a/4|treble': [100], 'b/4|treble': [200] };
+    const result = topSlowestNotes(stats, 3, 1);
+    assert.equal(result.length, 2);
+  });
+});
+
+// ── noteId ───────────────────────────────────────────────────────────────────
+
+describe('noteId', () => {
+  it('joins key and clef with a pipe so the parts can be split back out', () => {
+    const id = noteId(staffNote('C', 4, 'treble'));
+    assert.equal(id, 'c/4|treble');
+    const [key, clef] = id.split('|');
+    assert.equal(key, 'c/4');
+    assert.equal(clef, 'treble');
+  });
+
+  it('produces distinct ids for the same name in different clefs', () => {
+    assert.notEqual(
+      noteId(staffNote('B', 3, 'treble')),
+      noteId(staffNote('B', 3, 'bass')),
+    );
   });
 });
 

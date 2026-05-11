@@ -33,8 +33,9 @@ function isLedgerNote(n) {
   return false;
 }
 
-function weightedShuffle(notes) {
-  const weighted = notes.flatMap(n => isLedgerNote(n) ? [n, n] : [n]);
+function weightedShuffle(notes, getWeight) {
+  const weight = getWeight || (n => isLedgerNote(n) ? 2 : 1);
+  const weighted = notes.flatMap(n => Array(Math.max(1, weight(n))).fill(n));
   weighted.sort(() => Math.random() - 0.5);
   const seen = new Set();
   return weighted.filter(n => {
@@ -188,6 +189,67 @@ function isCorrectAnswer(name, key, currentNote, ignoreOctave) {
   return name === currentNote.name;
 }
 
+// ── Adaptive per-note weighting ─────────────────────────────────────────────
+// Latency telemetry per note → median-vs-global weight (clamped 1–4).
+// Notes with fewer than ADAPTIVE_MIN_SAMPLES get an explore boost so we
+// gather data on them before judging.
+const NOTE_SAMPLE_CAP        = 10;
+const ADAPTIVE_MIN_SAMPLES   = 3;
+const ADAPTIVE_MAX_WEIGHT    = 4;
+const ADAPTIVE_EXPLORE_WEIGHT = 2;
+
+function noteId(note) {
+  return note.key + '|' + note.clef;
+}
+
+function median(arr) {
+  if (!arr || arr.length === 0) return null;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+// Append a latency sample to a note's rolling buffer, capped at `cap`.
+// Returns a new stats object (does not mutate input).
+function recordSample(stats, id, latencyMs, cap = NOTE_SAMPLE_CAP) {
+  const next = { ...stats };
+  const arr  = (next[id] || []).concat(latencyMs);
+  next[id]   = arr.length > cap ? arr.slice(arr.length - cap) : arr;
+  return next;
+}
+
+// "Typical user time" = median of per-note medians (each note contributes
+// equally regardless of how many samples it has accumulated). Returns null
+// when there aren't enough measured notes to form a baseline.
+function globalNoteMedian(stats, minSamples = ADAPTIVE_MIN_SAMPLES) {
+  const medians = Object.values(stats)
+    .filter(arr => arr.length >= minSamples)
+    .map(median);
+  return medians.length > 0 ? median(medians) : null;
+}
+
+function noteAdaptiveWeight(stats, id, globalMed, minSamples = ADAPTIVE_MIN_SAMPLES) {
+  const arr = stats[id];
+  if (!arr || arr.length < minSamples || globalMed === null || globalMed === 0) {
+    return ADAPTIVE_EXPLORE_WEIGHT;
+  }
+  const w = Math.round(median(arr) / globalMed);
+  return Math.max(1, Math.min(ADAPTIVE_MAX_WEIGHT, w));
+}
+
+function topSlowestNotes(stats, n = 3, minSamples = ADAPTIVE_MIN_SAMPLES) {
+  return Object.entries(stats)
+    .filter(([, arr]) => arr.length >= minSamples)
+    .map(([id, arr]) => {
+      const [key, clef] = id.split('|');
+      return { key, clef, medianMs: median(arr) };
+    })
+    .sort((a, b) => b.medianMs - a.medianMs)
+    .slice(0, n);
+}
+
 const ACCURACY_WINDOW    = 20;
 const SPEED_WINDOW       = 20;
 const SPEED_MIN_ACC      = 0.80;
@@ -228,6 +290,9 @@ if (typeof module !== 'undefined') {
     melodicSegment, buildMelodicBatch,
     stepToNote, midiToNote,
     isCorrectAnswer, computeStats,
+    noteId, median, recordSample, globalNoteMedian,
+    noteAdaptiveWeight, topSlowestNotes,
     ACCURACY_WINDOW, SPEED_WINDOW, SPEED_MIN_ACC, SPEED_MIN_N, SPEED_TRIM_FRAC,
+    NOTE_SAMPLE_CAP, ADAPTIVE_MIN_SAMPLES, ADAPTIVE_MAX_WEIGHT, ADAPTIVE_EXPLORE_WEIGHT,
   };
 }
