@@ -19,7 +19,7 @@ FEED_ID = os.getenv("FEED_ID")
 IS_CLOUD = os.getenv('CLOUD_RUN_JOB')
 SCHILDKROETE_USERNAME = os.getenv("SCHILDKROETE_USERNAME")
 SCHILDKROETE_PASSWORD = os.getenv("SCHILDKROETE_PASSWORD")
-BIRTHDAYS_GIST_URL = os.getenv("BIRTHDAYS_GIST_URL")
+EVENTS_GIST_URL = os.getenv("EVENTS_GIST_URL")
 
 SYMBOL_CZ = {
     'clearsky': 'Jasno',
@@ -104,50 +104,62 @@ def strip_allergens(text):
     return re.sub(r'  +', ' ', text).strip()
 
 
-def _load_birthdays():
+def _load_events():
     raw = None
-    local = os.path.join(os.path.dirname(__file__), "birthdays.json")
+    local = os.path.join(os.path.dirname(__file__), "events.json")
     if os.path.exists(local):
         with open(local) as f:
             raw = json.load(f)
-    elif BIRTHDAYS_GIST_URL:
-        print("  Fetching birthdays from gist...")
-        raw = requests.get(BIRTHDAYS_GIST_URL, timeout=5).json()
+    elif EVENTS_GIST_URL:
+        print("  Fetching events from gist...")
+        raw = requests.get(EVENTS_GIST_URL, timeout=5).json()
     if not raw:
         return []
     result = []
-    for b in raw:
-        date_of_birth_str = b.get("dateOfBirth")
-        if date_of_birth_str:
-            result.append(dict(b, date_of_birth=datetime.date.fromisoformat(date_of_birth_str)))
+    for e in raw:
+        event_type = e["type"]
+        if event_type not in ("birthday", "holidays", "event"):
+            raise ValueError(f"Unknown event type {event_type!r} for {e.get('name')!r}")
+        result.append({
+            "name": e["name"],
+            "type": event_type,
+            "date": datetime.date.fromisoformat(e["date"]),
+        })
     return result
 
-BIRTHDAYS = _load_birthdays()
+EVENTS = _load_events()
 
 _CZ_MONTHS_GEN = [
     "ledna", "února", "března", "dubna", "května", "června",
     "července", "srpna", "září", "října", "listopadu", "prosince",
 ]
 
-def get_upcoming_birthdays(today, n=2, birthdays_list=None):
-    if birthdays_list is None:
-        birthdays_list = BIRTHDAYS
+def get_upcoming_events(today, n=2, events_list=None):
+    if events_list is None:
+        events_list = EVENTS
     result = []
-    for b in birthdays_list:
-        date_of_birth = b["date_of_birth"]
+    for e in events_list:
+        d = e["date"]
         try:
-            next_bday = date_of_birth.replace(year=today.year)
+            next_occ = d.replace(year=today.year)
         except ValueError:
-            next_bday = date_of_birth.replace(year=today.year, day=28)
-        if next_bday < today:
+            next_occ = d.replace(year=today.year, day=28)
+        if next_occ < today:
             try:
-                next_bday = date_of_birth.replace(year=today.year + 1)
+                next_occ = d.replace(year=today.year + 1)
             except ValueError:
-                next_bday = date_of_birth.replace(year=today.year + 1, day=28)
-        days_until = (next_bday - today).days
-        age = next_bday.year - date_of_birth.year
+                next_occ = d.replace(year=today.year + 1, day=28)
+        days_until = (next_occ - today).days
+        age = next_occ.year - d.year if e["type"] == "birthday" else None
         is_today = days_until == 0
-        result.append({"name": b["name"], "date": next_bday, "days_until": days_until, "age": age, "is_today": is_today})
+        result.append({
+            "name": e["name"],
+            "type": e["type"],
+            "date": next_occ,
+            "days_until": days_until,
+            "age": age,
+            "is_today": is_today,
+        })
     result.sort(key=lambda x: x["days_until"])
     return result[:n]
 
@@ -292,7 +304,7 @@ def get_data():
     dawn_str = s['dawn'].strftime("%H:%M")
     dusk_str = s['dusk'].strftime("%H:%M")
 
-    birthdays = get_upcoming_birthdays(today, n=3)
+    events = get_upcoming_events(today, n=3)
 
     return {
         "forecast": forecast,
@@ -301,7 +313,7 @@ def get_data():
         "dawn": dawn_str,
         "dusk": dusk_str,
         "date": date_str,
-        "birthdays": birthdays,
+        "events": events,
     }
 
 
@@ -374,22 +386,29 @@ def build_daylight_svg(today):
     )
 
 
-def build_birthday_html(birthdays):
+def build_events_html(events):
     items = ""
-    for b in birthdays:
-        day_str = f"{b['date'].day}."
-        month_str = _CZ_MONTHS_GEN[b['date'].month - 1]
-        age_html = f'<span class="bday-age">{_czech_age(b["age"])}</span>' if b["age"] is not None else '<span class="bday-age"></span>'
-        is_today = b.get("is_today")
+    for e in events:
+        day_str = f"{e['date'].day}."
+        month_str = _CZ_MONTHS_GEN[e['date'].month - 1]
+        age_html = f'<span class="bday-age">{_czech_age(e["age"])}</span>' if e["age"] is not None else '<span class="bday-age"></span>'
+        is_today = e.get("is_today")
         today_class = " bday-today" if is_today else ""
-        icon = "celebration" if is_today else "cake"
+        if is_today:
+            icon = "celebration"
+        elif e["type"] == "birthday":
+            icon = "cake"
+        elif e["type"] == "holidays":
+            icon = "beach_access"
+        else:
+            icon = "event"
         items += f"""
         <div class="bday-item{today_class}">
             <span class="icon bday-icon">{icon}</span>
-            <span class="bday-name">{b['name']}</span>
+            <span class="bday-name">{e['name']}</span>
             <span class="bday-date"><span class="bday-day">{day_str}</span><span class="bday-month">{month_str}</span></span>
             {age_html}
-            <span class="bday-days">{_czech_days(b['days_until'])}</span>
+            <span class="bday-days">{_czech_days(e['days_until'])}</span>
         </div>"""
     return items
 
@@ -438,7 +457,7 @@ def build_lunch_html(lunch, day_label):
 def create_screenshot(data):
     print("Creating screenshot (launching Chromium)...")
     rows_html = build_forecast_table(data['forecast'])
-    birthday_html = build_birthday_html(data.get('birthdays', []))
+    events_html = build_events_html(data.get('events', []))
     lunch_html, lunch_split = build_lunch_html(data.get('lunch', {}), data.get('lunch_label', ''))
     daylight_svg = build_daylight_svg(datetime.date.today())
     lunch_class = "lunch lunch-split" if lunch_split else "lunch"
@@ -548,7 +567,7 @@ def create_screenshot(data):
             .bday-today .bday-icon {{ font-size: 24px; opacity: 1; }}
             .bday-name {{ font-weight: 700; width: 105px; }}
             .bday-date {{ flex: 1; }}
-            .bday-day {{ display: inline-block; width: 26px; text-align: right; }}
+            .bday-day {{ display: inline-block; width: 28px; text-align: right; font-variant-numeric: tabular-nums; }}
             .bday-month {{ padding-left: 3px; }}
             .bday-age {{ font-weight: 600; width: 60px; text-align: right; }}
             .bday-days {{ font-size: 14px; width: 75px; text-align: right; }}
@@ -610,8 +629,8 @@ def create_screenshot(data):
             {rows_html}
         </table>
 
-        <div class="birthdays">
-            {birthday_html}
+        <div class="events">
+            {events_html}
         </div>
 
         <div class="{lunch_class}">

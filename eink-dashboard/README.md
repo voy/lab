@@ -11,7 +11,7 @@ Generates a 480×800px greyscale PNG for an e-ink display, updated hourly via Go
 - Each slot: weather icon, temperature, Czech description, precipitation %
 - Always shows the *next* occurrence — if 12:00 has passed, shows tomorrow's
 
-**Birthdays** — next 3 upcoming birthdays with date, age, and days until. Today's birthday gets a special highlight. Data loaded from a secret gist (see below).
+**Events** — next 3 upcoming family events: birthdays (with age) and one-off events (e.g. start of school break). Today's event gets a special highlight. Data loaded from a secret gist (see below).
 
 **Lunch** — today's or next school day's meal from [Schildkröte](https://bestellung.schildkroete-berlin.de), scraped after login.
 
@@ -67,15 +67,15 @@ FEED_ID=your-uuid   # generate with: python3 -c "import uuid; print(uuid.uuid4()
 
 `.env` is gitignored and never committed.
 
-### Birthdays
+### Events
 
-Birthday data is stored in a **secret GitHub Gist** as `birthdays.json` (see `birthdays.json.example` for the format). Add the raw gist URL to `.env`:
+Event data (birthdays + one-off events) is stored in a **secret GitHub Gist** as `events.json` (see `events.json.example` for the format). Every entry has an explicit `type` discriminator — one of `birthday`, `holidays`, or `event` — no default. Add the raw gist URL to `.env`:
 
 ```bash
-BIRTHDAYS_GIST_URL=https://gist.githubusercontent.com/you/abc123/raw/birthdays.json
+EVENTS_GIST_URL=https://gist.githubusercontent.com/you/abc123/raw/events.json
 ```
 
-Use the versionless `/raw/<filename>` URL (no commit hash) so updates to the gist are picked up automatically. The script fetches the gist at startup; if the URL is absent, the birthday section is simply empty.
+Use the versionless `/raw/<filename>` URL (no commit hash) so updates to the gist are picked up automatically. The script fetches the gist at startup; if the URL is absent, the events section is simply empty.
 
 ### First deploy
 

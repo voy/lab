@@ -4,7 +4,7 @@ import unittest
 from main import (
     strip_allergens, build_lunch_html, parse_lunch_html, lunch_target_date, _meal_html,
     symbol_to_cz, get_forecast_slot_for_date, build_forecast_table,
-    get_upcoming_birthdays, build_birthday_html,
+    get_upcoming_events, build_events_html,
     _czech_age, _czech_days, build_daylight_svg,
 )
 
@@ -443,20 +443,21 @@ class TestCzechDays(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# get_upcoming_birthdays
+# get_upcoming_events
 # ---------------------------------------------------------------------------
 
-_SAMPLE_BIRTHDAYS = [
-    {"name": "Ada",   "date_of_birth": datetime.date(2010,  4,  4)},
-    {"name": "Eva",   "date_of_birth": datetime.date(1980, 11, 19)},
-    {"name": "Petr",  "date_of_birth": datetime.date(1978,  3, 12)},
+_SAMPLE_EVENTS = [
+    {"name": "Ada",       "type": "birthday", "date": datetime.date(2010,  4,  4)},
+    {"name": "Eva",       "type": "birthday", "date": datetime.date(1980, 11, 19)},
+    {"name": "Petr",      "type": "birthday", "date": datetime.date(1978,  3, 12)},
+    {"name": "Prázdniny", "type": "holidays", "date": datetime.date(2026,  7,  9)},
 ]
 
 
-class TestGetUpcomingBirthdays(unittest.TestCase):
+class TestGetUpcomingEvents(unittest.TestCase):
 
-    def _run(self, today_iso, n=3, blist=_SAMPLE_BIRTHDAYS):
-        return get_upcoming_birthdays(datetime.date.fromisoformat(today_iso), n=n, birthdays_list=blist)
+    def _run(self, today_iso, n=4, elist=_SAMPLE_EVENTS):
+        return get_upcoming_events(datetime.date.fromisoformat(today_iso), n=n, events_list=elist)
 
     def test_is_today_true_on_birthday(self):
         results = self._run("2026-04-04")
@@ -493,15 +494,33 @@ class TestGetUpcomingBirthdays(unittest.TestCase):
         ada = next(r for r in results if r["name"] == "Ada")
         self.assertEqual(ada["age"], 16)
 
+    def test_event_type_preserved(self):
+        results = self._run("2026-05-01")
+        praz = next(r for r in results if r["name"] == "Prázdniny")
+        self.assertEqual(praz["type"], "holidays")
+        ada = next(r for r in results if r["name"] == "Ada")
+        self.assertEqual(ada["type"], "birthday")
+
+    def test_non_birthday_has_no_age(self):
+        results = self._run("2026-05-01")
+        praz = next(r for r in results if r["name"] == "Prázdniny")
+        self.assertIsNone(praz["age"])
+
+    def test_event_is_today_on_event_date(self):
+        results = self._run("2026-07-09")
+        praz = next(r for r in results if r["name"] == "Prázdniny")
+        self.assertTrue(praz["is_today"])
+
 
 
 # ---------------------------------------------------------------------------
-# build_birthday_html
+# build_events_html
 # ---------------------------------------------------------------------------
 
 def _bday(name, month, day, age=30, is_today=False):
     return {
         "name": name,
+        "type": "birthday",
         "date": datetime.date(2026, month, day),
         "days_until": 0 if is_today else 21,
         "age": age,
@@ -509,44 +528,102 @@ def _bday(name, month, day, age=30, is_today=False):
     }
 
 
-class TestBuildBirthdayHtml(unittest.TestCase):
+def _event(name, month, day, is_today=False):
+    return {
+        "name": name,
+        "type": "event",
+        "date": datetime.date(2026, month, day),
+        "days_until": 0 if is_today else 21,
+        "age": None,
+        "is_today": is_today,
+    }
+
+
+def _holidays(name, month, day, is_today=False):
+    return {
+        "name": name,
+        "type": "holidays",
+        "date": datetime.date(2026, month, day),
+        "days_until": 0 if is_today else 21,
+        "age": None,
+        "is_today": is_today,
+    }
+
+
+class TestBuildEventsHtml(unittest.TestCase):
 
     def test_name_in_output(self):
-        self.assertIn("Test", build_birthday_html([_bday("Test", 4, 4)]))
+        self.assertIn("Test", build_events_html([_bday("Test", 4, 4)]))
 
     def test_age_shown(self):
-        self.assertIn("12 let", build_birthday_html([_bday("Test", 4, 4, age=12)]))
+        self.assertIn("12 let", build_events_html([_bday("Test", 4, 4, age=12)]))
 
     def test_age_hidden_when_none(self):
-        html = build_birthday_html([_bday("Test", 9, 15, age=None)])
+        html = build_events_html([_bday("Test", 9, 15, age=None)])
         self.assertNotIn("let", html)
         self.assertNotIn("rok", html)
 
     def test_bday_today_class_when_is_today(self):
-        html = build_birthday_html([_bday("Test", 4, 4, is_today=True)])
+        html = build_events_html([_bday("Test", 4, 4, is_today=True)])
         self.assertIn("bday-today", html)
 
     def test_celebration_icon_when_is_today(self):
-        html = build_birthday_html([_bday("Test", 4, 4, is_today=True)])
+        html = build_events_html([_bday("Test", 4, 4, is_today=True)])
         self.assertIn("celebration", html)
 
     def test_cake_icon_when_not_today(self):
-        html = build_birthday_html([_bday("Test", 4, 4, is_today=False)])
+        html = build_events_html([_bday("Test", 4, 4, is_today=False)])
         self.assertIn("cake", html)
         self.assertNotIn("celebration", html)
 
     def test_no_bday_today_class_when_not_today(self):
-        html = build_birthday_html([_bday("Test", 4, 4, is_today=False)])
+        html = build_events_html([_bday("Test", 4, 4, is_today=False)])
         self.assertNotIn("bday-today", html)
 
     def test_bday_today_class_with_unknown_age(self):
-        html = build_birthday_html([_bday("Test", 9, 15, age=None, is_today=True)])
+        html = build_events_html([_bday("Test", 9, 15, age=None, is_today=True)])
         self.assertIn("bday-today", html)
 
     def test_multiple_entries_rendered(self):
-        html = build_birthday_html([_bday("Alice", 4, 4), _bday("Bob", 11, 19)])
+        html = build_events_html([_bday("Alice", 4, 4), _bday("Bob", 11, 19)])
         self.assertIn("Alice", html)
         self.assertIn("Bob", html)
+
+    def test_event_uses_event_icon(self):
+        html = build_events_html([_event("Prázdniny", 7, 9)])
+        self.assertIn(">event<", html)
+
+    def test_event_no_cake_icon(self):
+        html = build_events_html([_event("Prázdniny", 7, 9)])
+        self.assertNotIn("cake", html)
+
+    def test_event_no_age_rendered(self):
+        html = build_events_html([_event("Prázdniny", 7, 9)])
+        self.assertNotIn("let", html)
+        self.assertNotIn("rok", html)
+
+    def test_event_celebration_when_today(self):
+        html = build_events_html([_event("Anything", 7, 9, is_today=True)])
+        self.assertIn("celebration", html)
+        self.assertNotIn(">event<", html)
+
+    def test_holidays_uses_beach_access_icon(self):
+        html = build_events_html([_holidays("Prázdniny", 7, 9)])
+        self.assertIn(">beach_access<", html)
+
+    def test_holidays_no_cake_icon(self):
+        html = build_events_html([_holidays("Prázdniny", 7, 9)])
+        self.assertNotIn("cake", html)
+
+    def test_holidays_no_age_rendered(self):
+        html = build_events_html([_holidays("Prázdniny", 7, 9)])
+        self.assertNotIn("let", html)
+        self.assertNotIn("rok", html)
+
+    def test_holidays_celebration_when_today(self):
+        html = build_events_html([_holidays("Prázdniny", 7, 9, is_today=True)])
+        self.assertIn("celebration", html)
+        self.assertNotIn(">beach_access<", html)
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,6 @@
+[
+  {"name": "Alice",         "type": "birthday", "date": "2014-04-04"},
+  {"name": "Bob",           "type": "birthday", "date": "1983-11-19"},
+  {"name": "Summer break",  "type": "holidays", "date": "2026-07-09"},
+  {"name": "Dentist",       "type": "event",    "date": "2026-06-12"}
+]
