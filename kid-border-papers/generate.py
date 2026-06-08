@@ -8,6 +8,7 @@ between Berlin and Prague, plus a German consent page for the border."""
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -81,6 +82,11 @@ def load_config():
                       "config.json and fill in your details.")
         sys.exit(1)
     return json.loads(path.read_text())
+
+
+def open_pdf(path):
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
 
 
 # ---------- rendering ----------
@@ -330,6 +336,8 @@ def main():
         return
     path = generate(cfg, kids, legs, sign)
     console.print(f"[bold green]✓ Wrote[/] {path}")
+    if questionary.confirm("Open the PDF now?", default=True).ask():
+        open_pdf(path)
 
 
 # ---------- demo (non-interactive smoke test) ----------
@@ -342,6 +350,7 @@ def demo():
     sign = dt.date(2026, 6, 8)
     path = generate(cfg, kids, legs, sign)
     print("demo wrote", path)
+    open_pdf(path)
 
 
 if __name__ == "__main__":
