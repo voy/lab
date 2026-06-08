@@ -1,0 +1,23 @@
+{
+  "signer": "Jan Novák",
+  "parents": [
+    { "name": "Jan Novák", "phone": "+4915100000000" },
+    { "name": "Eva Nováková", "phone": "+4915111111111" }
+  ],
+  "home_address": "Musterstraße 1, 10115 Berlin, Deutschland",
+  "home_city": "berlin",
+  "cities": {
+    "berlin": { "label": "Berlín", "cz_gen": "Berlína", "de": "Berlin" },
+    "praha": { "label": "Praha", "cz_gen": "Prahy", "de": "Prag" }
+  },
+  "pickup": {
+    "praha": [
+      { "name": "Marie Svobodová", "phone": "+420600000000" },
+      { "name": "Petr Svoboda", "phone": "+420600111111" }
+    ]
+  },
+  "kids": [
+    { "name": "Tomáš Novák", "dob": "4.4.2014", "passport": "12345678", "medical": "Žádná omezení" },
+    { "name": "Anna Nováková", "dob": "22.1.2016", "passport": "12345679", "medical": "Žádná omezení" }
+  ]
+}
