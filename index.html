@@ -7,14 +7,27 @@
   <title>voy/lab</title>
   <style>
     :root {
-      --bg: #0d1117;
-      --surface: #161b22;
-      --border: #30363d;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --accent: #58a6ff;
-      --accent-dim: #1f6feb;
-      --tag-bg: #21262d;
+      --bg: #111;
+      --surface: #1a1a1a;
+      --border: #2a2a2a;
+      --text: #ddd;
+      --muted: #777;
+      --accent: #bbb;
+      --accent-dim: #444;
+      --tag-bg: #1e1e1e;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f5f5;
+        --surface: #fff;
+        --border: #e0e0e0;
+        --text: #222;
+        --muted: #888;
+        --accent: #444;
+        --accent-dim: #ccc;
+        --tag-bg: #f0f0f0;
+      }
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,6 +66,8 @@
       font-size: 14px;
       margin-top: 6px;
     }
+
+    .repo-desc a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 
     main {
       max-width: 900px;
@@ -142,7 +157,7 @@
     <span class="sep">/</span>
     <a href="https://github.com/voy/lab"><strong>lab</strong></a>
   </div>
-  <p class="repo-desc">A lab for tools, experiments, and interactive demos</p>
+  <p class="repo-desc">Tools, experiments, and interactive demos by <a href="https://voy.cz">Vojtech Jasny</a> — software engineer based in Berlin. Built for myself, my family, or just to see if something would work.</p>
 </header>
 
 <main>
