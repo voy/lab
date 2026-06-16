@@ -2,8 +2,8 @@
  * MarSei Ceramics restock monitor (Google Apps Script).
  *
  * Polls the "Kalíšky cappuccino" and "Kalíšky latté" categories on marseiceramics.cz
- * and sends a Telegram alert the moment any cup flips from "Vyprodáno" (sold out) to
- * purchasable. Alerts fire only on the sold-out -> in-stock transition.
+ * and sends a Telegram alert when a category goes from all-sold-out to having anything
+ * buyable. Detection is category-level: (products on page) > ("Vyprodáno" markers).
  *
  * Channels: restock alerts -> Telegram (urgent). Health alerts -> email: one mail after
  * FAIL_THRESHOLD consecutive failed runs, and one "recovered" mail when it reads again.
@@ -17,20 +17,25 @@
  *        EMAIL_TO         = <your email>   (optional; defaults to this account's owner)
  *   4. Run checkStock() once manually to grant the external-request permission.
  *   5. Triggers -> add time-driven trigger on checkStock, every 1 or 5 minutes.
+ *
+ * To test the Telegram path: set DEBUG_FORCE_ALERT = true, run checkStock() once
+ * (it sends a sample alert and skips the real check), then set it back to false.
  */
 
 var BASE = 'https://marseiceramics.cz';
 var CATEGORIES = ['kalisky-cappuccino', 'kalisky-latte'];
 var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
          '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-var STATE_KEY = 'inStockSlugs';
+var STATE_KEY = 'availableCategories';
 var FAIL_KEY = 'failCount';            // consecutive failed runs (persisted across executions)
 var NEXT_TRY_KEY = 'nextTryAt';        // epoch ms; after a failure, don't retry before this
 
+var DEBUG_FORCE_ALERT = false;         // set true for one run to fire a test Telegram alert
+
 // Run a 1-minute trigger, but only actually poll during daytime Prague hours.
 // (Drops cluster Tue + midday/evening; nothing of value happens overnight.)
-var ACTIVE_START_HOUR = 8;             // inclusive, Europe/Prague
-var ACTIVE_END_HOUR = 22;             // exclusive
+var ACTIVE_START_HOUR = 9;             // inclusive, Europe/Prague
+var ACTIVE_END_HOUR = 21;             // exclusive
 var RETRY_DELAY_MIN = 5;               // after any failure, wait this long before retrying
 var FAIL_THRESHOLD = 3;                // email after this many consecutive failures
 
@@ -38,6 +43,12 @@ var FAIL_THRESHOLD = 3;                // email after this many consecutive fail
 
 function checkStock() {
   var props = PropertiesService.getScriptProperties();
+
+  if (DEBUG_FORCE_ALERT) {
+    notifyTelegram(CATEGORIES.map(function (c) { return { slug: c, inStockCount: '(test)' }; }));
+    Logger.log('DEBUG_FORCE_ALERT — sent test alert, skipping real check.');
+    return;
+  }
 
   if (!isActiveNow()) { Logger.log('Outside active hours — skipping run.'); return; }
   var nextTry = Number(props.getProperty(NEXT_TRY_KEY) || 0);
@@ -47,24 +58,19 @@ function checkStock() {
   }
 
   try {
-    var products = [];
-    CATEGORIES.forEach(function (slug) {
-      products = products.concat(fetchCategoryStock(slug));
-    });
-
-    var nowInStock = products.filter(function (p) { return p.inStock; });
-    var nowSlugs = nowInStock.map(function (p) { return p.slug; });
+    Logger.log('Polling %s', CATEGORIES.join(', '));
+    var results = CATEGORIES.map(fetchCategoryStock);
+    var availableNow = results.filter(function (r) { return r.available; });
+    var nowSlugs = availableNow.map(function (r) { return r.slug; });
 
     var prev = JSON.parse(props.getProperty(STATE_KEY) || '[]');
-    var newlyAvailable = nowInStock.filter(function (p) {
-      return prev.indexOf(p.slug) === -1;
-    });
-    if (newlyAvailable.length) notifyTelegram(newlyAvailable);
+    var newly = availableNow.filter(function (r) { return prev.indexOf(r.slug) === -1; });
+    if (newly.length) notifyTelegram(newly);
     props.setProperty(STATE_KEY, JSON.stringify(nowSlugs));
 
     onSuccess(props);
-    Logger.log('OK — checked %s products, %s in stock, %s newly available.',
-      products.length, nowInStock.length, newlyAvailable.length);
+    Logger.log('OK — %s/%s categories have stock, %s newly available.',
+      availableNow.length, CATEGORIES.length, newly.length);
   } catch (err) {
     onFailure(props, err);
   }
@@ -111,79 +117,52 @@ function fetchCategoryStock(slug) {
   var initial = extractComponent(page, 'collection-page');
   if (!initial) throw new Error('collection-page component not found for ' + slug);
 
-  // The initial server HTML defaults every card to "available"; the real stock
-  // state only comes back from this Livewire "load" call.
-  var payload = {
-    fingerprint: initial.fingerprint,
-    serverMemo: initial.serverMemo,
-    updates: [{ type: 'callMethod', payload: { id: 'load', method: 'load', params: [] } }]
-  };
-
+  // Send load + skladem filter as a single Livewire call against the original serverMemo.
+  // Two separate calls fail with 500 — the load response serverMemo checksum is not reusable.
   var resp = UrlFetchApp.fetch(BASE + '/livewire/message/collection-page', {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: {
-      'X-CSRF-TOKEN': token,
-      'X-Livewire': 'true',
+      'X-CSRF-TOKEN': token, 'X-Livewire': 'true',
       'Accept': 'text/html, application/xhtml+xml',
-      'User-Agent': UA,
-      'Referer': catUrl,
-      'Origin': BASE,
-      'Cookie': cookie
-    }
+      'User-Agent': UA, 'Referer': catUrl, 'Origin': BASE, 'Cookie': cookie
+    },
+    payload: JSON.stringify({
+      fingerprint: initial.fingerprint, serverMemo: initial.serverMemo,
+      updates: [
+        { type: 'callMethod', payload: { id: 'load', method: 'load', params: [] } },
+        { type: 'syncInput', payload: { id: 'filter', name: 'filterValues.product-boolean-attributes.in-stock', value: 'in-stock' } }
+      ]
+    })
   });
+  assertOk(resp, slug + ' load+filter');
+  var filterHtml = JSON.parse(resp.getContentText()).effects.html;
+  var inStock = countProducts(filterHtml);
 
-  assertOk(resp, slug + ' load');
-  var html = JSON.parse(resp.getContentText()).effects.html;
-  return parseProducts(html, slug);
+  var status;
+  if (inStock > 0) {
+    status = inStock + ' in stock — RESTOCK!';
+  } else if (/Tady prozat[ií]m nic nem[aá]me/i.test(filterHtml)) {
+    status = '0 in stock (empty-state confirmed — filter OK)';
+  } else {
+    status = '0 in stock (WARNING: empty-state text not found — verify filter is still working)';
+  }
+  Logger.log('  ' + slug + ': ' + status);
+  return { slug: slug, inStockCount: inStock, available: inStock > 0 };
 }
 
-function parseProducts(html, cat) {
-  var firsts = {}, order = [], re = /\/produkty\/([a-z0-9\-]+)/g, m;
-  while ((m = re.exec(html)) !== null) {
-    if (!(m[1] in firsts)) { firsts[m[1]] = m.index; order.push(m[1]); }
-  }
-  order.sort(function (a, b) { return firsts[a] - firsts[b]; });
-
-  var out = [];
-  for (var i = 0; i < order.length; i++) {
-    var slug = order[i];
-    var start = firsts[slug];
-    var end = (i + 1 < order.length) ? firsts[order[i + 1]] : html.length;
-    // back up to capture the title anchor that precedes the product link
-    var seg = html.substring(Math.max(0, start - 400), end);
-
-    var name = slug;
-    var aRe = new RegExp('<a[^>]*produkty\\/' + escapeRe(slug) + '[^>]*>([\\s\\S]*?)<\\/a>', 'g');
-    var a;
-    while ((a = aRe.exec(seg)) !== null) {
-      var txt = a[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-      if (txt) { name = txt; break; }
-    }
-
-    out.push({
-      slug: slug,
-      cat: cat,
-      name: name,
-      url: BASE + '/produkty/' + slug,
-      inStock: !/Vyprod[aá]no/i.test(seg)
-    });
-  }
-
-  if (/wire:click="[^"]*(nextPage|gotoPage)/.test(html) || html.indexOf('page=2') !== -1) {
-    Logger.log('WARNING: pagination present in "%s" — only page 1 is checked.', cat);
-  }
-  return out;
+function countProducts(html) {
+  var seen = {}, re = /\/produkty\/([a-z0-9\-]+)/g, m;
+  while ((m = re.exec(html)) !== null) seen[m[1]] = true;
+  return Object.keys(seen).length;
 }
 
 // ---- Telegram --------------------------------------------------------------
 
-function notifyTelegram(products) {
-  Logger.log('Restock! Alerting: %s', products.map(function (p) { return p.name; }).join(', '));
-  var lines = products.map(function (p) {
-    return '🛎️ ' + p.name + '  (' + catLabel(p.cat) + ')\n' + p.url;
+function notifyTelegram(cats) {
+  Logger.log('Restock! Alerting: %s', cats.map(function (c) { return c.slug; }).join(', '));
+  var lines = cats.map(function (c) {
+    return '🛎️ ' + catLabel(c.slug) + ' — ' + c.inStockCount + ' in stock\n' +
+           BASE + '/kategorie/' + c.slug;
   });
   sendTelegram('Restock at MarSei Ceramics!\n\n' + lines.join('\n\n'));
 }
@@ -194,11 +173,12 @@ function sendTelegram(text) {
   var chatId = props.getProperty('TELEGRAM_CHAT_ID');
   if (!token || !chatId) throw new Error('TELEGRAM_TOKEN / TELEGRAM_CHAT_ID not set');
 
-  UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+  var resp = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
     method: 'post',
     muteHttpExceptions: true,
     payload: { chat_id: chatId, text: text, disable_web_page_preview: 'false' }
   });
+  Logger.log('Telegram sendMessage -> HTTP %s', resp.getResponseCode());
 }
 
 /** One-off helper: message your bot first, then run this and read the log for the chat id. */
@@ -254,8 +234,6 @@ function htmlUnescape(s) {
   return s.replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
           .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
-
-function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 function catLabel(cat) {
   return cat === 'kalisky-cappuccino' ? 'cappuccino'
