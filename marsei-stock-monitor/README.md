@@ -7,6 +7,12 @@ the shop before it's gone again.
 
 Runs as a Google Apps Script on a 1-minute trigger. No server, no headless browser, free forever.
 
+## Why this stack
+
+**Google Apps Script** — paste one file, set two secrets, add a trigger. No repo, no CI, no server to keep alive, no 60-day auto-disable like GitHub Actions free tier. Persistent state between runs via `ScriptProperties`. Runs forever on Google's infrastructure at zero cost.
+
+**Telegram** — instant push to your phone with no app to build. One HTTP call from the script to the Bot API.
+
 ## Setup (~5 min)
 
 1. Create a Telegram bot via `@BotFather`, copy the token.
