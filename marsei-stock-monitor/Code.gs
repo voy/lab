@@ -23,7 +23,7 @@
  */
 
 var BASE = 'https://marseiceramics.cz';
-var CATEGORIES = ['kalisky-cappuccino', 'kalisky-latte'];
+var CATEGORIES = ['kalisky-cappuccino', 'kalisky-latte', 'hrnicky', 'misy', 'snidanove-sety'];
 var UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
          '(KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 var STATE_KEY = 'availableCategories';
@@ -236,5 +236,8 @@ function htmlUnescape(s) {
 
 function catLabel(cat) {
   return cat === 'kalisky-cappuccino' ? 'cappuccino'
-       : cat === 'kalisky-latte' ? 'latté' : cat;
+       : cat === 'kalisky-latte' ? 'latté'
+       : cat === 'hrnicky' ? 'hrníčky'
+       : cat === 'misy' ? 'mísy'
+       : cat === 'snidanove-sety' ? 'snídaňové sety' : cat;
 }
