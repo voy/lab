@@ -69,8 +69,7 @@ function checkStock() {
     props.setProperty(STATE_KEY, JSON.stringify(nowSlugs));
 
     onSuccess(props);
-    Logger.log('OK — %s/%s categories have stock, %s newly available.',
-      availableNow.length, CATEGORIES.length, newly.length);
+    Logger.log('OK — ' + availableNow.length + '/' + CATEGORIES.length + ' categories have stock, ' + newly.length + ' newly available.');
   } catch (err) {
     onFailure(props, err);
   }
