@@ -1,0 +1,56 @@
+name: Sayyato Booker
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    if: github.actor == 'voy'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install chromium --with-deps
+
+      - name: Write config
+        run: |
+          python3 -c "
+import json, os
+json.dump({
+  'EMAIL':            os.environ['EMAIL'],
+  'PASSWORD':         os.environ['PASSWORD'],
+  'API_BASE':         os.environ['API_BASE'],
+  'CLUB_ID':          os.environ['CLUB_ID'],
+  'PLAN_ID':          os.environ['PLAN_ID'],
+  'DAYS_AHEAD':       int(os.environ.get('DAYS_AHEAD', '2')),
+  'COURSES':          json.loads(os.environ['COURSES']),
+  'TELEGRAM_TOKEN':   os.environ['TELEGRAM_TOKEN'],
+  'TELEGRAM_CHAT_ID': os.environ['TELEGRAM_CHAT_ID'],
+  'SKIP_GIST_URL':    os.environ['SKIP_GIST_URL'],
+}, open('sayyato-booker/config.json', 'w'))
+"
+        env:
+          EMAIL:            ${{ secrets.SAYYATO_EMAIL }}
+          PASSWORD:         ${{ secrets.SAYYATO_PASSWORD }}
+          API_BASE:         ${{ secrets.SAYYATO_API_BASE }}
+          CLUB_ID:          ${{ secrets.SAYYATO_CLUB_ID }}
+          PLAN_ID:          ${{ secrets.SAYYATO_PLAN_ID }}
+          DAYS_AHEAD:       ${{ secrets.SAYYATO_DAYS_AHEAD }}
+          COURSES:          ${{ secrets.SAYYATO_COURSES }}
+          TELEGRAM_TOKEN:   ${{ secrets.SAYYATO_TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.SAYYATO_TELEGRAM_CHAT_ID }}
+          SKIP_GIST_URL:    ${{ secrets.SAYYATO_SKIP_GIST_URL }}
+
+      - name: Book and sync
+        run: |
+          python3 sayyato-booker/book.py book
+          python3 sayyato-booker/book.py sync

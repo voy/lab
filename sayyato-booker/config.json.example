@@ -1,0 +1,15 @@
+{
+  "EMAIL":            "your-sayyato-email@example.com",
+  "PASSWORD":         "your-sayyato-password",
+  "API_BASE":         "https://your-club.clubkonzepte24.de:33929",
+  "CLUB_ID":          "your-club-id-uuid",
+  "PLAN_ID":          "your-plan-id-uuid",
+  "DAYS_AHEAD":       2,
+  "COURSES": [
+    {"dow": 0, "name": "Monday Class"},
+    {"dow": 3, "name": "Thursday Class"}
+  ],
+  "TELEGRAM_TOKEN":   "your-bot-token-from-BotFather",
+  "TELEGRAM_CHAT_ID": "your-chat-id",
+  "SKIP_GIST_URL":    "https://gist.githubusercontent.com/you/abc123/raw/skip.json"
+}

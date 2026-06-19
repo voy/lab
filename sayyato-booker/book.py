@@ -1,0 +1,513 @@
+#!/usr/bin/env python3
+"""Sayyato class auto-booker — uses Playwright (Chromium/BoringSSL) to pass TLS fingerprint check.
+
+Usage:
+  python3 book.py              # book class DAYS_AHEAD from today (cron mode)
+  python3 book.py book         # same
+  python3 book.py sync         # cancel any booked slots that are in the skip list
+  python3 book.py debug        # auth check + slot list for next ~2 weeks, no booking
+  python3 book.py list         # list upcoming booked slots
+  python3 book.py book-all     # book every available future slot
+"""
+
+import json
+import sys
+from datetime import date, timedelta, datetime, timezone
+from pathlib import Path
+from typing import Optional
+from urllib.parse import urlparse
+from urllib.request import urlopen, Request
+from zoneinfo import ZoneInfo
+
+from playwright.sync_api import sync_playwright
+
+SCRIPT_DIR = Path(__file__).parent
+CONFIG     = json.loads((SCRIPT_DIR / "config.json").read_text())
+
+API_BASE    = CONFIG["API_BASE"]
+CLUB_ID     = CONFIG["CLUB_ID"]
+PLAN_ID     = CONFIG["PLAN_ID"]
+BERLIN      = ZoneInfo("Europe/Berlin")
+GIST_URL    = CONFIG.get("SKIP_GIST_URL", "")
+GIST_EDIT   = GIST_URL.replace("gist.githubusercontent.com", "gist.github.com").split("/raw/")[0] if GIST_URL else ""
+_api_host   = urlparse(API_BASE).hostname
+BOOKING_URL = f"https://{_api_host}/booking/#!/kursplan?cid={CLUB_ID}&id={PLAN_ID}"
+
+
+def log(msg: str) -> None:
+    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {msg}", flush=True)
+
+
+def tg(msg: str) -> None:
+    log(msg)
+    token   = CONFIG.get("TELEGRAM_TOKEN")
+    chat_id = CONFIG.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return
+    full = f"{msg}\n\n✏️ {GIST_EDIT}"
+    try:
+        payload = json.dumps({"chat_id": chat_id, "text": full}).encode()
+        urlopen(
+            Request(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            ),
+            timeout=10,
+        )
+    except Exception as e:
+        log(f"Telegram error: {e}")
+
+
+def fetch_skip_dates() -> list:
+    if not GIST_URL:
+        return []
+    try:
+        with urlopen(GIST_URL, timeout=10) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        log(f"Skip-list fetch failed (ignoring): {e}")
+        return []
+
+
+def is_public_holiday(date_str: str) -> bool:
+    try:
+        with urlopen(f"https://feiertage-api.de/api/?jahr={date_str[:4]}&nur_land=BE", timeout=10) as r:
+            return any(h["datum"] == date_str for h in json.loads(r.read()).values())
+    except Exception as e:
+        log(f"Holiday check failed (booking anyway): {e}")
+        return False
+
+
+def _load_schulferien() -> list:
+    cache_file = SCRIPT_DIR / "schulferien_cache.json"
+    if cache_file.exists():
+        cached = json.loads(cache_file.read_text())
+        # Cache is valid for 30 days
+        if (datetime.now().timestamp() - cached.get("ts", 0)) < 30 * 86400:
+            return cached["data"]
+    try:
+        with urlopen("https://ferien-api.de/api/v1/holidays/BE", timeout=10) as r:
+            ferien = json.loads(r.read())
+        cache_file.write_text(json.dumps({"ts": datetime.now().timestamp(), "data": ferien}))
+        return ferien
+    except Exception as e:
+        log(f"Schulferien fetch failed: {e}")
+        if cache_file.exists():
+            return json.loads(cache_file.read_text())["data"]
+        return []
+
+
+def is_schulferien(date_str: str) -> bool:
+    ferien = _load_schulferien()
+    return any(f["start"][:10] <= date_str < f["end"][:10] for f in ferien)
+
+
+def week_bounds(target: date):
+    mon = target - timedelta(days=target.weekday())
+    sun = mon - timedelta(days=1)
+    sat = mon + timedelta(days=5)
+    def utc22(d: date) -> str:
+        return datetime(d.year, d.month, d.day, 22, tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return utc22(sun), utc22(sat)
+
+
+# ── Playwright session ────────────────────────────────────────────────────────
+
+def make_page(pw):
+    browser = pw.chromium.launch(headless=True)
+    ctx     = browser.new_context(
+        locale="de-DE",
+        user_agent=(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/149.0.0.0 Safari/537.36"
+        ),
+    )
+    page = ctx.new_page()
+    log("Navigating to booking page…")
+    page.goto(BOOKING_URL, wait_until="networkidle", timeout=30_000)
+    log("Page loaded.")
+    return browser, page
+
+
+def angular_api(page, method: str, path: str, body=None, token: Optional[str] = None):
+    result = page.evaluate(
+        """([method, url, body, token]) => {
+            const inj   = angular.element(document.querySelector('[ng-app]')).injector();
+            const $http = inj.get('$http');
+            const cfg   = {
+                method,
+                url,
+                data:    body,
+                headers: { 'Accept': 'application/json, text/plain, */*' },
+            };
+            if (token) cfg.headers['Authorization'] = 'Bearer ' + token;
+            return $http(cfg).then(r => ({ ok: true, status: r.status, data: r.data }))
+                             .catch(e => ({ ok: false, status: e.status, data: e.data }));
+        }""",
+        [method, f"{API_BASE}{path}", body, token],
+    )
+    if not result["ok"]:
+        raise RuntimeError(f"API {method} {path} → {result['status']}: {str(result['data'])[:300]}")
+    return result["data"]
+
+
+def angular_api_raw(page, method: str, path: str, body=None, token: Optional[str] = None):
+    """Like angular_api but returns (ok, data) without raising — used to inspect error payloads."""
+    result = page.evaluate(
+        """([method, url, body, token]) => {
+            const inj   = angular.element(document.querySelector('[ng-app]')).injector();
+            const $http = inj.get('$http');
+            const cfg   = { method, url, data: body, headers: { 'Accept': 'application/json, text/plain, */*' } };
+            if (token) cfg.headers['Authorization'] = 'Bearer ' + token;
+            return $http(cfg).then(r => ({ ok: true, data: r.data }))
+                             .catch(e => ({ ok: false, data: e.data }));
+        }""",
+        [method, f"{API_BASE}{path}", body, token],
+    )
+    return result["ok"], result["data"]
+
+
+def login(page):
+    angular_api(page, "POST", "/booking/authenticate", {"ref": ""})
+    data = angular_api(page, "POST", "/booking/check/login", {
+        "email":    CONFIG["EMAIL"],
+        "password": CONFIG["PASSWORD"],
+    })
+    return data["token"], data["uid"]
+
+
+def get_week_slots(page, target: date) -> list:
+    week_start, week_end = week_bounds(target)
+    data = angular_api(page, "PUT", "/booking/kursplan/week", {
+        "Start": week_start, "Ende": week_end, "Id": PLAN_ID,
+        "CheckBuchbareKurse": True, "AnzahlWochenZumPruefen": 52,
+    })
+    return (data or {}).get("Daten", {}).get("alleKurse") or []
+
+
+def find_slot(slots: list, course_name: str, target_str: str):
+    name_lc = course_name.lower()
+    return next(
+        (s for s in slots
+         if not s.get("Stattgefunden")
+         and name_lc in s.get("Bezeichnung", "").lower()
+         and s.get("Start", "")[:10] == target_str),
+        None,
+    )
+
+
+def is_booked(slot: dict) -> bool:
+    return bool(slot.get("MeinTermin") or slot.get("IstGebucht") or slot.get("Gebucht"))
+
+
+def book_slot(page, token: str, uid: str, slot: dict):
+    """Book slot, returns orderId UUID."""
+    return angular_api(page, "POST", "/booking/create/kurs", {
+        "PersonNr":       uid,
+        "TerminartNr":    slot["Terminart_Nr"],
+        "Start":          slot["Start"],
+        "Ende":           slot["Ende"],
+        "Language":       "de",
+        "TerminNr":       slot["Nr"],
+        "Artikel":        slot["Bezeichnung"],
+        "RessourcenIds":  slot["RessourcesNrs"],
+        "Zahlart":        "",
+        "Leistungsarten": [],
+        "MitgliedsOption": 1,
+    }, token=token)
+
+
+def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
+    """Return the booking orderId UUID for an already-booked slot.
+    The server returns it in the error payload when a double-booking is attempted."""
+    ok, data = angular_api_raw(page, "POST", "/booking/create/kurs", {
+        "PersonNr":       uid,
+        "TerminartNr":    slot["Terminart_Nr"],
+        "Start":          slot["Start"],
+        "Ende":           slot["Ende"],
+        "Language":       "de",
+        "TerminNr":       slot["Nr"],
+        "Artikel":        slot["Bezeichnung"],
+        "RessourcenIds":  slot["RessourcesNrs"],
+        "Zahlart":        "",
+        "Leistungsarten": [],
+        "MitgliedsOption": 1,
+    }, token=token)
+    if not ok and isinstance(data, dict):
+        return data.get("orderId")
+    if ok:
+        return data  # booking succeeded (shouldn't happen here, but return it)
+    return None
+
+
+def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
+    """Cancel a booked slot. Returns True on success."""
+    order_id = get_order_id(page, token, uid, slot)
+    if not order_id:
+        log(f"  Could not resolve orderId for slot {slot.get('Nr')} — skipping cancel")
+        return False
+    angular_api(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
+    return True
+
+
+def slot_status(slot: dict) -> str:
+    if is_booked(slot):
+        return "✅ booked"
+    if slot.get("NichtBuchbar"):
+        reason = slot.get("NichtBuchbarGrund") or "not bookable"
+        return f"🔒 {reason}"
+    free = slot.get("FreiePlaetze", "?")
+    return f"🟢 available ({free} free)"
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+def cmd_book():
+    days_ahead  = CONFIG.get("DAYS_AHEAD", 2)
+    today       = datetime.now(tz=BERLIN).date()
+    target      = today + timedelta(days=days_ahead)
+    dow         = target.weekday()
+    skip_dates  = fetch_skip_dates()
+
+    course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
+    if not course:
+        log(f"No course on DOW {dow} ({target}) — nothing to do.")
+        return
+
+    target_str = str(target)
+    log(f"Target: {target} — {course['name']}")
+
+    if target_str in skip_dates:
+        tg(f"⏭️ Skipping {course['name']} on {target} — in skip list")
+        return
+    if is_public_holiday(target_str):
+        tg(f"⛔ Skipping {course['name']} on {target} — public holiday")
+        return
+    if is_schulferien(target_str):
+        tg(f"🏖️ Skipping {course['name']} on {target} — Schulferien")
+        return
+
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        try:
+            token, uid = login(page)
+            slots      = get_week_slots(page, target)
+            slot       = find_slot(slots, course["name"], target_str)
+            if not slot:
+                tg(f"⏳ {course['name']} on {target} — slot not published yet")
+                return
+            if is_booked(slot):
+                log(f"Already booked: {course['name']} on {target}")
+                return
+            order_id = book_slot(page, token, uid, slot)
+            tg(f"✅ Booked: {slot['Bezeichnung']} on {target}")
+        except Exception as e:
+            tg(f"❌ Error booking {course['name']} on {target}: {e}")
+        finally:
+            browser.close()
+
+
+def cmd_sync():
+    """Cancel any booked slots that appear in the skip list."""
+    skip_dates = fetch_skip_dates()
+    if not skip_dates:
+        log("Skip list is empty — nothing to sync.")
+        return
+
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        cancelled = []
+        try:
+            token, uid  = login(page)
+            today       = datetime.now(tz=BERLIN).date()
+            slots_cache: dict = {}
+
+            for offset in range(0, 90):
+                target = today + timedelta(days=offset)
+                if str(target) not in skip_dates:
+                    continue
+                dow    = target.weekday()
+                course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
+                if not course:
+                    continue
+
+                week_key = str(target - timedelta(days=dow))
+                if week_key not in slots_cache:
+                    slots_cache[week_key] = get_week_slots(page, target)
+
+                slot = find_slot(slots_cache[week_key], course["name"], str(target))
+                if not slot:
+                    continue
+                if not is_booked(slot):
+                    log(f"  {target} {course['name']}: not booked, skip-list entry is a no-op")
+                    continue
+
+                log(f"  Cancelling {course['name']} on {target}…")
+                if cancel_slot(page, token, uid, slot):
+                    cancelled.append(f"{target} {course['name']}")
+
+        except Exception as e:
+            tg(f"❌ Sync error: {e}")
+            return
+        finally:
+            browser.close()
+
+        if cancelled:
+            tg("🗑️ Cancelled:\n" + "\n".join(f"  • {c}" for c in cancelled))
+        else:
+            log("Nothing to cancel.")
+
+
+def cmd_debug():
+    skip_dates = fetch_skip_dates()
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        lines = ["🔍 Sayyato Booker — schedule"]
+        try:
+            token, uid = login(page)
+            lines.append(f"Login: {uid[:8]}…")
+
+            today       = datetime.now(tz=BERLIN).date()
+            slots_cache: dict = {}
+            n_no_slot   = 0
+
+            for offset in range(1, 60):
+                target = today + timedelta(days=offset)
+                dow    = target.weekday()
+                course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
+                if not course:
+                    continue
+
+                week_key = str(target - timedelta(days=dow))
+                if week_key not in slots_cache:
+                    slots_cache[week_key] = get_week_slots(page, target)
+
+                target_str = str(target)
+                slot = find_slot(slots_cache[week_key], course["name"], target_str)
+                if slot:
+                    n_no_slot = 0
+                    status = slot_status(slot)
+                    tags = []
+                    if target_str in skip_dates:        tags.append("skip")
+                    if is_public_holiday(target_str):   tags.append("holiday")
+                    if is_schulferien(target_str):      tags.append("Ferien")
+                    suffix = f" ({', '.join(tags)})" if tags else ""
+                    lines.append(f"  {target_str} {course['name']}: {status}{suffix}")
+                else:
+                    n_no_slot += 1
+                    if n_no_slot <= 2:
+                        lines.append(f"  {target_str} {course['name']}: — not published yet")
+                    elif n_no_slot == 3:
+                        lines.append(f"  … (no more slots published)")
+                        break
+
+        except Exception as e:
+            lines.append(f"❌ {e}")
+        finally:
+            browser.close()
+
+        tg("\n".join(lines))
+
+
+def cmd_list():
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        try:
+            token, uid  = login(page)
+            today       = datetime.now(tz=BERLIN).date()
+            slots_cache: dict = {}
+            booked      = []
+
+            for offset in range(0, 90):
+                target   = today + timedelta(days=offset)
+                week_key = str(target - timedelta(days=target.weekday()))
+                if week_key in slots_cache:
+                    continue
+                for slot in get_week_slots(page, target):
+                    if is_booked(slot):
+                        booked.append(slot)
+                slots_cache[week_key] = True
+
+            if not booked:
+                tg("📋 No upcoming bookings.")
+            else:
+                lines = ["📋 Upcoming bookings:"]
+                for s in sorted(booked, key=lambda x: x.get("Start", "")):
+                    lines.append(f"  {s['Start'][:10]} {s.get('Bezeichnung', '?')}")
+                tg("\n".join(lines))
+        except Exception as e:
+            tg(f"❌ {e}")
+        finally:
+            browser.close()
+
+
+def cmd_book_all():
+    skip_dates = fetch_skip_dates()
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        try:
+            token, uid  = login(page)
+            today       = datetime.now(tz=BERLIN).date()
+            slots_cache: dict = {}
+            n_booked    = 0
+            n_skipped   = 0
+
+            for offset in range(1, 90):
+                target = today + timedelta(days=offset)
+                dow    = target.weekday()
+                course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
+                if not course:
+                    continue
+
+                target_str = str(target)
+                week_key   = str(target - timedelta(days=dow))
+                if week_key not in slots_cache:
+                    slots_cache[week_key] = get_week_slots(page, target)
+
+                if target_str in skip_dates:
+                    log(f"  {target_str} — in skip list"); n_skipped += 1; continue
+                if is_public_holiday(target_str):
+                    log(f"  {target_str} — public holiday"); n_skipped += 1; continue
+                if is_schulferien(target_str):
+                    log(f"  {target_str} — Schulferien"); n_skipped += 1; continue
+
+                slot = find_slot(slots_cache[week_key], course["name"], target_str)
+                if not slot:
+                    log(f"  {target_str} {course['name']}: no slot"); continue
+                if slot.get("NichtBuchbar"):
+                    log(f"  {target_str} {course['name']}: not bookable yet"); continue
+                if is_booked(slot):
+                    log(f"  {target_str} {course['name']}: already booked"); continue
+
+                try:
+                    book_slot(page, token, uid, slot)
+                    log(f"  ✅ {target_str} {course['name']} booked")
+                    n_booked += 1
+                except Exception as e:
+                    log(f"  ⚠️ {target_str} {course['name']}: {e}")
+
+            tg(f"📅 book-all done: {n_booked} booked, {n_skipped} skipped")
+        except Exception as e:
+            tg(f"❌ {e}")
+        finally:
+            browser.close()
+
+
+# ── Entry ─────────────────────────────────────────────────────────────────────
+
+COMMANDS = {
+    "book":     cmd_book,
+    "sync":     cmd_sync,
+    "debug":    cmd_debug,
+    "list":     cmd_list,
+    "book-all": cmd_book_all,
+}
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "book"
+    if cmd not in COMMANDS:
+        print(f"Usage: book.py [{'|'.join(COMMANDS)}]", file=sys.stderr)
+        sys.exit(1)
+    COMMANDS[cmd]()
