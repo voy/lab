@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to run'
+        required: false
+        default: 'book'
+        type: choice
+        options: [book, sync, debug, list, book-all]
 
 jobs:
   book:
@@ -35,7 +42,9 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.SAYYATO_TELEGRAM_CHAT_ID }}
           SKIP_GIST_URL:    ${{ secrets.SAYYATO_SKIP_GIST_URL }}
 
-      - name: Book and sync
+      - name: Run
         run: |
-          python3 sayyato-booker/book.py book
-          python3 sayyato-booker/book.py sync
+          python3 sayyato-booker/book.py ${{ github.event.inputs.command || 'book' }}
+          if [ "${{ github.event.inputs.command || 'book' }}" = "book" ]; then
+            python3 sayyato-booker/book.py sync
+          fi

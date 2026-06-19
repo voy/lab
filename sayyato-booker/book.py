@@ -44,9 +44,9 @@ def tg(msg: str) -> None:
     chat_id = CONFIG.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         return
-    full = f"{msg}\n\n✏️ {GIST_EDIT}"
+    full = f"{msg}\n\n✏️ Skip list: {GIST_EDIT}"
     try:
-        payload = json.dumps({"chat_id": chat_id, "text": full}).encode()
+        payload = json.dumps({"chat_id": chat_id, "text": full, "link_preview_options": {"is_disabled": True}}).encode()
         urlopen(
             Request(
                 f"https://api.telegram.org/bot{token}/sendMessage",
