@@ -22,22 +22,7 @@ jobs:
           playwright install chromium --with-deps
 
       - name: Write config
-        run: |
-          python3 -c "
-import json, os
-json.dump({
-  'EMAIL':            os.environ['EMAIL'],
-  'PASSWORD':         os.environ['PASSWORD'],
-  'API_BASE':         os.environ['API_BASE'],
-  'CLUB_ID':          os.environ['CLUB_ID'],
-  'PLAN_ID':          os.environ['PLAN_ID'],
-  'DAYS_AHEAD':       int(os.environ.get('DAYS_AHEAD', '2')),
-  'COURSES':          json.loads(os.environ['COURSES']),
-  'TELEGRAM_TOKEN':   os.environ['TELEGRAM_TOKEN'],
-  'TELEGRAM_CHAT_ID': os.environ['TELEGRAM_CHAT_ID'],
-  'SKIP_GIST_URL':    os.environ['SKIP_GIST_URL'],
-}, open('sayyato-booker/config.json', 'w'))
-"
+        run: python3 sayyato-booker/write_config.py
         env:
           EMAIL:            ${{ secrets.SAYYATO_EMAIL }}
           PASSWORD:         ${{ secrets.SAYYATO_PASSWORD }}
