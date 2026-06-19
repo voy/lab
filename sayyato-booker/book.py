@@ -79,23 +79,26 @@ def is_public_holiday(date_str: str) -> bool:
         return False
 
 
+_schulferien: Optional[list] = None
+
 def _load_schulferien() -> list:
+    global _schulferien
+    if _schulferien is not None:
+        return _schulferien
     cache_file = SCRIPT_DIR / "schulferien_cache.json"
     if cache_file.exists():
         cached = json.loads(cache_file.read_text())
-        # Cache is valid for 30 days
         if (datetime.now().timestamp() - cached.get("ts", 0)) < 30 * 86400:
-            return cached["data"]
+            _schulferien = cached["data"]
+            return _schulferien
     try:
         with urlopen("https://ferien-api.de/api/v1/holidays/BE", timeout=10) as r:
-            ferien = json.loads(r.read())
-        cache_file.write_text(json.dumps({"ts": datetime.now().timestamp(), "data": ferien}))
-        return ferien
+            _schulferien = json.loads(r.read())
+        cache_file.write_text(json.dumps({"ts": datetime.now().timestamp(), "data": _schulferien}))
     except Exception as e:
-        log(f"Schulferien fetch failed: {e}")
-        if cache_file.exists():
-            return json.loads(cache_file.read_text())["data"]
-        return []
+        log(f"Schulferien fetch failed (booking anyway): {e}")
+        _schulferien = []
+    return _schulferien
 
 
 def is_schulferien(date_str: str) -> bool:
@@ -485,8 +488,11 @@ def cmd_book_all():
                     book_slot(page, token, uid, slot)
                     log(f"  ✅ {target_str} {course['name']} booked")
                     n_booked += 1
-                except Exception as e:
-                    log(f"  ⚠️ {target_str} {course['name']}: {e}")
+                except RuntimeError as e:
+                    if "T_Member_already_in_course" in str(e):
+                        log(f"  {target_str} {course['name']}: already booked")
+                    else:
+                        log(f"  ⚠️ {target_str} {course['name']}: {e}")
 
             tg(f"📅 book-all done: {n_booked} booked, {n_skipped} skipped")
         except Exception as e:

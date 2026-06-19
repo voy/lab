@@ -12,6 +12,9 @@ on:
         type: choice
         options: [book, sync, debug, list, book-all]
 
+env:
+  ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node20
+
 jobs:
   book:
     runs-on: ubuntu-latest
