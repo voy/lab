@@ -1,0 +1,30 @@
+name: Sayyato API probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe /booking/authenticate
+        run: |
+          SID=$(python3 -c "import uuid; print(uuid.uuid4())")
+          HTTP=$(curl -s -o /tmp/body.txt -w "%{http_code}" \
+            -X POST \
+            "https://icm01f02d27fd55f3.clubkonzepte24.de:33929/booking/authenticate" \
+            -H "Content-Type: application/json" \
+            -H "sid: $SID" \
+            -H "clubid: 8fce455c-53ca-11ef-9953-00155d007803" \
+            -H "Origin: https://icm01f02d27fd55f3.clubkonzepte24.de" \
+            -H "Referer: https://icm01f02d27fd55f3.clubkonzepte24.de/" \
+            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            -H "Accept: application/json, text/plain, */*" \
+            -H "Accept-Language: de-DE,de;q=0.9" \
+            -H "sec-fetch-dest: empty" \
+            -H "sec-fetch-mode: cors" \
+            -H "sec-fetch-site: same-site" \
+            -d '{"ref":""}')
+          echo "HTTP status: $HTTP"
+          echo "Body: $(cat /tmp/body.txt)"
+          [ "$HTTP" = "200" ] || [ "$HTTP" = "204" ] || exit 1
