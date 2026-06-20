@@ -306,8 +306,11 @@ def cmd_book():
                 return
             order_id = book_slot(page, token, uid, slot)
             tg(f"✅ Booked: {slot['Bezeichnung']} on {target}")
-        except Exception as e:
-            tg(f"❌ Error booking {course['name']} on {target}: {e}")
+        except RuntimeError as e:
+            if "T_Member_already_in_course" in str(e):
+                log(f"Already booked: {course['name']} on {target}")
+            else:
+                tg(f"❌ Error booking {course['name']} on {target}: {e}")
         finally:
             browser.close()
 
