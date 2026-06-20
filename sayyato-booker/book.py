@@ -24,14 +24,16 @@ from playwright.sync_api import sync_playwright
 SCRIPT_DIR = Path(__file__).parent
 CONFIG     = json.loads((SCRIPT_DIR / "config.json").read_text())
 
-API_BASE    = CONFIG["API_BASE"]
-CLUB_ID     = CONFIG["CLUB_ID"]
-PLAN_ID     = CONFIG["PLAN_ID"]
-BERLIN      = ZoneInfo("Europe/Berlin")
-GIST_URL    = CONFIG.get("SKIP_GIST_URL", "")
-GIST_EDIT   = GIST_URL.replace("gist.githubusercontent.com", "gist.github.com").split("/raw/")[0] if GIST_URL else ""
-_api_host   = urlparse(API_BASE).hostname
-BOOKING_URL = f"https://{_api_host}/booking/#!/kursplan?cid={CLUB_ID}&id={PLAN_ID}"
+API_BASE           = CONFIG["API_BASE"]
+CLUB_ID            = CONFIG["CLUB_ID"]
+PLAN_ID            = CONFIG["PLAN_ID"]
+BERLIN             = ZoneInfo("Europe/Berlin")
+GIST_URL           = CONFIG.get("SKIP_GIST_URL", "")
+GIST_EDIT          = GIST_URL.replace("gist.githubusercontent.com", "gist.github.com").split("/raw/")[0] if GIST_URL else ""
+_api_host          = urlparse(API_BASE).hostname
+BOOKING_URL        = f"https://{_api_host}/booking/#!/kursplan?cid={CLUB_ID}&id={PLAN_ID}"
+OPENHOLIDAYS_BASE  = CONFIG.get("OPENHOLIDAYS_BASE", "https://openholidaysapi.org")
+HOLIDAYS_GIST_URL  = CONFIG.get("HOLIDAYS_GIST_URL", "")
 
 
 def log(msg: str) -> None:
@@ -70,40 +72,81 @@ def fetch_skip_dates() -> list:
         return []
 
 
-def is_public_holiday(date_str: str) -> bool:
-    try:
-        with urlopen(f"https://feiertage-api.de/api/?jahr={date_str[:4]}&nur_land=BE", timeout=10) as r:
-            return any(h["datum"] == date_str for h in json.loads(r.read()).values())
-    except Exception as e:
-        log(f"Holiday check failed (booking anyway): {e}")
-        return False
+_holidays: Optional[dict] = None  # {"public": set[str], "school": [{"start", "end", "name"}]}
 
 
-_schulferien: Optional[list] = None
 
-def _load_schulferien() -> list:
-    global _schulferien
-    if _schulferien is not None:
-        return _schulferien
-    cache_file = SCRIPT_DIR / "schulferien_cache.json"
+def _load_holidays() -> dict:
+    global _holidays
+    if _holidays is not None:
+        return _holidays
+
+    cache_file = SCRIPT_DIR / "holidays_cache.json"
     if cache_file.exists():
         cached = json.loads(cache_file.read_text())
-        if (datetime.now().timestamp() - cached.get("ts", 0)) < 30 * 86400:
-            _schulferien = cached["data"]
-            return _schulferien
+        if (datetime.now().timestamp() - cached.get("ts", 0)) < 60 * 86400:
+            _holidays = {"public": set(cached["public"]), "school": cached["school"]}
+            return _holidays
+
     try:
-        with urlopen("https://ferien-api.de/api/v1/holidays/BE", timeout=10) as r:
-            _schulferien = json.loads(r.read())
-        cache_file.write_text(json.dumps({"ts": datetime.now().timestamp(), "data": _schulferien}))
+        today     = datetime.now(tz=BERLIN)
+        date_from = today.strftime("%Y-%m-%d")
+        date_to   = f"{today.year + 2}-12-31"
+        params    = f"countryIsoCode=DE&languageIsoCode=DE&subdivisionCode=DE-BE&validFrom={date_from}&validTo={date_to}"
+
+        with urlopen(f"{OPENHOLIDAYS_BASE}/PublicHolidays?{params}", timeout=10) as r:
+            pub_raw = json.loads(r.read())
+        with urlopen(f"{OPENHOLIDAYS_BASE}/SchoolHolidays?{params}", timeout=10) as r:
+            sch_raw = json.loads(r.read())
+
+        public_dates = [h["startDate"] for h in pub_raw]
+        school = [
+            {
+                "start": h["startDate"],
+                "end":   str(date.fromisoformat(h["endDate"]) + timedelta(days=1)),
+                "name":  next((n["text"] for n in h["name"] if n["language"] == "DE"), h["name"][0]["text"]),
+            }
+            for h in sch_raw
+        ]
+        serializable = {"ts": datetime.now().timestamp(), "public": public_dates, "school": school}
+        cache_file.write_text(json.dumps(serializable))
+        _holidays = {"public": set(public_dates), "school": school}
+        return _holidays
+
     except Exception as e:
-        log(f"Schulferien fetch failed (booking anyway): {e}")
-        _schulferien = []
-    return _schulferien
+        log(f"OpenHolidays fetch failed: {e}")
+
+    if HOLIDAYS_GIST_URL:
+        try:
+            with urlopen(HOLIDAYS_GIST_URL, timeout=10) as r:
+                cached = json.loads(r.read())
+            _holidays = {"public": set(cached["public"]), "school": cached["school"]}
+            log("Holidays loaded from gist fallback.")
+            return _holidays
+        except Exception as e:
+            log(f"Holidays gist fallback failed: {e}")
+
+    _holidays = {"public": set(), "school": []}
+    return _holidays
+
+
+def is_public_holiday(date_str: str) -> bool:
+    return date_str in _load_holidays()["public"]
 
 
 def is_schulferien(date_str: str) -> bool:
-    ferien = _load_schulferien()
-    return any(f["start"][:10] <= date_str < f["end"][:10] for f in ferien)
+    return any(f["start"] <= date_str < f["end"] for f in _load_holidays()["school"])
+
+
+def is_bridge_day(date_str: str) -> bool:
+    d   = date.fromisoformat(date_str)
+    dow = d.weekday()
+    pub = _load_holidays()["public"]
+    if dow == 0:  # Monday: skip if Tuesday is a public holiday
+        return str(d + timedelta(days=1)) in pub
+    if dow == 4:  # Friday: skip if Thursday is a public holiday
+        return str(d - timedelta(days=1)) in pub
+    return False
 
 
 def week_bounds(target: date):
@@ -291,6 +334,9 @@ def cmd_book():
     if is_schulferien(target_str):
         tg(f"🏖️ Skipping {course['name']} on {target} — Schulferien")
         return
+    if is_bridge_day(target_str):
+        tg(f"🌉 Skipping {course['name']} on {target} — bridge day")
+        return
 
     with sync_playwright() as pw:
         browser, page = make_page(pw)
@@ -308,7 +354,7 @@ def cmd_book():
             tg(f"✅ Booked: {slot['Bezeichnung']} on {target}")
         except RuntimeError as e:
             if "T_Member_already_in_course" in str(e):
-                log(f"Already booked: {course['name']} on {target}")
+                log(f"✅ Already booked (skipping): {course['name']} on {target}")
             else:
                 tg(f"❌ Error booking {course['name']} on {target}: {e}")
         finally:
@@ -399,6 +445,7 @@ def cmd_debug():
                     if target_str in skip_dates:        tags.append("skip")
                     if is_public_holiday(target_str):   tags.append("holiday")
                     if is_schulferien(target_str):      tags.append("Ferien")
+                    if is_bridge_day(target_str):       tags.append("Brückentag")
                     suffix = f" ({', '.join(tags)})" if tags else ""
                     lines.append(f"  {target_str} {course['name']}: {status}{suffix}")
                 else:
@@ -478,6 +525,8 @@ def cmd_book_all():
                     log(f"  {target_str} — public holiday"); n_skipped += 1; continue
                 if is_schulferien(target_str):
                     log(f"  {target_str} — Schulferien"); n_skipped += 1; continue
+                if is_bridge_day(target_str):
+                    log(f"  {target_str} — bridge day"); n_skipped += 1; continue
 
                 slot = find_slot(slots_cache[week_key], course["name"], target_str)
                 if not slot:

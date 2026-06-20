@@ -43,7 +43,9 @@ jobs:
           COURSES:          ${{ secrets.SAYYATO_COURSES }}
           TELEGRAM_TOKEN:   ${{ secrets.SAYYATO_TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.SAYYATO_TELEGRAM_CHAT_ID }}
-          SKIP_GIST_URL:    ${{ secrets.SAYYATO_SKIP_GIST_URL }}
+          SKIP_GIST_URL:      ${{ secrets.SAYYATO_SKIP_GIST_URL }}
+          HOLIDAYS_GIST_URL:  ${{ secrets.SAYYATO_HOLIDAYS_GIST_URL }}
+          OPENHOLIDAYS_BASE:  ${{ secrets.SAYYATO_OPENHOLIDAYS_BASE }}
 
       - name: Run
         run: |
