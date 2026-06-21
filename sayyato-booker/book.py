@@ -348,13 +348,13 @@ def cmd_book():
                 tg(f"⏳ {course['name']} on {target} — slot not published yet")
                 return
             if is_booked(slot):
-                log(f"Already booked: {course['name']} on {target}")
+                tg(f"✅ Already booked: {course['name']} on {target}")
                 return
             order_id = book_slot(page, token, uid, slot)
             tg(f"✅ Booked: {slot['Bezeichnung']} on {target}")
         except RuntimeError as e:
             if "T_Member_already_in_course" in str(e):
-                log(f"✅ Already booked (skipping): {course['name']} on {target}")
+                tg(f"✅ Already booked: {course['name']} on {target}")
             else:
                 tg(f"❌ Error booking {course['name']} on {target}: {e}")
         finally:
