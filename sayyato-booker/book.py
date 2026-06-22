@@ -315,7 +315,7 @@ def upcoming_summary(page, skip_dates: list, n: int = 5) -> str:
     count = 0
     n_no_slot = 0
 
-    for offset in range(0, 50):
+    for offset in range(1, 50):
         target = today + timedelta(days=offset)
         dow    = target.weekday()
         course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
@@ -355,56 +355,74 @@ def upcoming_summary(page, skip_dates: list, n: int = 5) -> str:
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_book():
-    days_ahead  = CONFIG.get("DAYS_AHEAD", 2)
-    today       = datetime.now(tz=BERLIN).date()
-    target      = today + timedelta(days=days_ahead)
-    dow         = target.weekday()
-    skip_dates  = fetch_skip_dates()
+    days_ahead    = CONFIG.get("DAYS_AHEAD", 2)
+    today         = datetime.now(tz=BERLIN).date()
+    today_str     = str(today)
+    target        = today + timedelta(days=days_ahead)
+    target_str    = str(target)
+    skip_dates    = fetch_skip_dates()
 
-    course     = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
-    target_str = str(target)
+    target_course = next((c for c in CONFIG["COURSES"] if c["dow"] == target.weekday()), None)
+    today_course  = next((c for c in CONFIG["COURSES"] if c["dow"] == today.weekday()), None)
 
     with sync_playwright() as pw:
         browser, page = make_page(pw)
-        summary = ""
+        summary      = ""
+        today_header = ""
         try:
             token, uid = login(page)
-            summary    = upcoming_summary(page, skip_dates)
 
-            if not course:
-                tg(summary.strip())
+            # Confirm (or last-minute book) today's class via a definitive booking attempt
+            if today_course:
+                today_slots = get_week_slots(page, today)
+                today_slot  = find_slot(today_slots, today_course["name"], today_str)
+                if today_slot:
+                    try:
+                        book_slot(page, token, uid, today_slot)
+                        today_header = f"✅ Today: {today_course['name']} on {today_str} — just booked"
+                    except RuntimeError as e:
+                        if "T_Member_already_in_course" in str(e):
+                            today_header = f"✅ Today: {today_course['name']} on {today_str} — booked ✓"
+                        else:
+                            today_header = f"⚠️ Today: {today_course['name']} — {e}"
+
+            summary = upcoming_summary(page, skip_dates)
+
+            if not target_course:
+                if today_header:
+                    tg(today_header + summary)
                 return
 
-            log(f"Target: {target} — {course['name']}")
+            log(f"Target: {target} — {target_course['name']}")
 
             if target_str in skip_dates:
-                tg(f"⏭️ Skipping {course['name']} on {target} — in skip list" + summary)
+                tg(f"⏭️ Skipping {target_course['name']} on {target} — in skip list" + summary)
                 return
             if is_public_holiday(target_str):
-                tg(f"⛔ Skipping {course['name']} on {target} — public holiday" + summary)
+                tg(f"⛔ Skipping {target_course['name']} on {target} — public holiday" + summary)
                 return
             if is_schulferien(target_str):
-                tg(f"🏖️ Skipping {course['name']} on {target} — Schulferien" + summary)
+                tg(f"🏖️ Skipping {target_course['name']} on {target} — Schulferien" + summary)
                 return
             if is_bridge_day(target_str):
-                tg(f"🌉 Skipping {course['name']} on {target} — bridge day" + summary)
+                tg(f"🌉 Skipping {target_course['name']} on {target} — bridge day" + summary)
                 return
 
             slots = get_week_slots(page, target)
-            slot  = find_slot(slots, course["name"], target_str)
+            slot  = find_slot(slots, target_course["name"], target_str)
             if not slot:
-                tg(f"⏳ {course['name']} on {target} — slot not published yet" + summary)
+                tg(f"⏳ {target_course['name']} on {target} — slot not published yet" + summary)
                 return
             if is_booked(slot):
-                tg(f"✅ Already booked: {course['name']} on {target}" + summary)
+                tg(f"✅ Already booked: {target_course['name']} on {target}" + summary)
                 return
             book_slot(page, token, uid, slot)
             tg(f"✅ Booked: {slot['Bezeichnung']} on {target}" + summary)
         except RuntimeError as e:
             if "T_Member_already_in_course" in str(e):
-                tg(f"✅ Already booked: {course['name']} on {target}" + summary)
+                tg(f"✅ Already booked: {target_course['name'] if target_course else '?'} on {target}" + summary)
             else:
-                tg(f"❌ Error booking {course['name']} on {target}: {e}")
+                tg(f"❌ Error: {e}")
         finally:
             browser.close()
 
