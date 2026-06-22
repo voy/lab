@@ -369,44 +369,39 @@ def cmd_book():
     target_str = str(target)
     log(f"Target: {target} — {course['name']}")
 
-    if target_str in skip_dates:
-        tg(f"⏭️ Skipping {course['name']} on {target} — in skip list")
-        return
-    if is_public_holiday(target_str):
-        tg(f"⛔ Skipping {course['name']} on {target} — public holiday")
-        return
-    if is_schulferien(target_str):
-        tg(f"🏖️ Skipping {course['name']} on {target} — Schulferien")
-        return
-    if is_bridge_day(target_str):
-        tg(f"🌉 Skipping {course['name']} on {target} — bridge day")
-        return
-
     with sync_playwright() as pw:
         browser, page = make_page(pw)
+        summary = ""
         try:
             token, uid = login(page)
-            slots      = get_week_slots(page, target)
-            slot       = find_slot(slots, course["name"], target_str)
+            summary    = upcoming_summary(page, skip_dates)
+
+            if target_str in skip_dates:
+                tg(f"⏭️ Skipping {course['name']} on {target} — in skip list" + summary)
+                return
+            if is_public_holiday(target_str):
+                tg(f"⛔ Skipping {course['name']} on {target} — public holiday" + summary)
+                return
+            if is_schulferien(target_str):
+                tg(f"🏖️ Skipping {course['name']} on {target} — Schulferien" + summary)
+                return
+            if is_bridge_day(target_str):
+                tg(f"🌉 Skipping {course['name']} on {target} — bridge day" + summary)
+                return
+
+            slots = get_week_slots(page, target)
+            slot  = find_slot(slots, course["name"], target_str)
             if not slot:
-                msg = f"⏳ {course['name']} on {target} — slot not published yet"
-                msg += upcoming_summary(page, skip_dates)
-                tg(msg)
+                tg(f"⏳ {course['name']} on {target} — slot not published yet" + summary)
                 return
             if is_booked(slot):
-                msg = f"✅ Already booked: {course['name']} on {target}"
-                msg += upcoming_summary(page, skip_dates)
-                tg(msg)
+                tg(f"✅ Already booked: {course['name']} on {target}" + summary)
                 return
             book_slot(page, token, uid, slot)
-            msg = f"✅ Booked: {slot['Bezeichnung']} on {target}"
-            msg += upcoming_summary(page, skip_dates)
-            tg(msg)
+            tg(f"✅ Booked: {slot['Bezeichnung']} on {target}" + summary)
         except RuntimeError as e:
             if "T_Member_already_in_course" in str(e):
-                msg = f"✅ Already booked: {course['name']} on {target}"
-                msg += upcoming_summary(page, skip_dates)
-                tg(msg)
+                tg(f"✅ Already booked: {course['name']} on {target}" + summary)
             else:
                 tg(f"❌ Error booking {course['name']} on {target}: {e}")
         finally:
