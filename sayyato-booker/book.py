@@ -11,6 +11,7 @@ Usage:
 """
 
 import json
+import json5
 import sys
 from datetime import date, timedelta, datetime, timezone
 from pathlib import Path
@@ -66,7 +67,7 @@ def fetch_skip_dates() -> list:
         return []
     try:
         with urlopen(GIST_URL, timeout=10) as r:
-            return json.loads(r.read())
+            return json5.loads(r.read())
     except Exception as e:
         log(f"Skip-list fetch failed (ignoring): {e}")
         return []
