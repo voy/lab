@@ -308,6 +308,50 @@ def slot_status(slot: dict) -> str:
     return f"🟢 available ({free} free)"
 
 
+def upcoming_summary(page, skip_dates: list, n: int = 5) -> str:
+    today       = datetime.now(tz=BERLIN).date()
+    slots_cache: dict = {}
+    lines = []
+    count = 0
+    n_no_slot = 0
+
+    for offset in range(1, 50):
+        target = today + timedelta(days=offset)
+        dow    = target.weekday()
+        course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
+        if not course:
+            continue
+
+        week_key = str(target - timedelta(days=dow))
+        if week_key not in slots_cache:
+            slots_cache[week_key] = get_week_slots(page, target)
+
+        target_str = str(target)
+        slot = find_slot(slots_cache[week_key], course["name"], target_str)
+        if slot:
+            n_no_slot = 0
+            tags = []
+            if target_str in skip_dates:       tags.append("skip")
+            if is_public_holiday(target_str):  tags.append("holiday")
+            if is_schulferien(target_str):     tags.append("Ferien")
+            if is_bridge_day(target_str):      tags.append("Brückentag")
+            suffix = f" ({', '.join(tags)})" if tags else ""
+            lines.append(f"  {target_str} {course['name']}: {slot_status(slot)}{suffix}")
+            count += 1
+            if count >= n:
+                break
+        else:
+            n_no_slot += 1
+            if n_no_slot == 1:
+                lines.append(f"  {target_str} {course['name']}: not published yet")
+            else:
+                break
+
+    if not lines:
+        return ""
+    return "\n\n📅 Upcoming:\n" + "\n".join(lines)
+
+
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_book():
@@ -345,16 +389,24 @@ def cmd_book():
             slots      = get_week_slots(page, target)
             slot       = find_slot(slots, course["name"], target_str)
             if not slot:
-                tg(f"⏳ {course['name']} on {target} — slot not published yet")
+                msg = f"⏳ {course['name']} on {target} — slot not published yet"
+                msg += upcoming_summary(page, skip_dates)
+                tg(msg)
                 return
             if is_booked(slot):
-                tg(f"✅ Already booked: {course['name']} on {target}")
+                msg = f"✅ Already booked: {course['name']} on {target}"
+                msg += upcoming_summary(page, skip_dates)
+                tg(msg)
                 return
-            order_id = book_slot(page, token, uid, slot)
-            tg(f"✅ Booked: {slot['Bezeichnung']} on {target}")
+            book_slot(page, token, uid, slot)
+            msg = f"✅ Booked: {slot['Bezeichnung']} on {target}"
+            msg += upcoming_summary(page, skip_dates)
+            tg(msg)
         except RuntimeError as e:
             if "T_Member_already_in_course" in str(e):
-                tg(f"✅ Already booked: {course['name']} on {target}")
+                msg = f"✅ Already booked: {course['name']} on {target}"
+                msg += upcoming_summary(page, skip_dates)
+                tg(msg)
             else:
                 tg(f"❌ Error booking {course['name']} on {target}: {e}")
         finally:
