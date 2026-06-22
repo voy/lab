@@ -315,7 +315,7 @@ def upcoming_summary(page, skip_dates: list, n: int = 5) -> str:
     count = 0
     n_no_slot = 0
 
-    for offset in range(1, 50):
+    for offset in range(0, 50):
         target = today + timedelta(days=offset)
         dow    = target.weekday()
         course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
@@ -361,13 +361,8 @@ def cmd_book():
     dow         = target.weekday()
     skip_dates  = fetch_skip_dates()
 
-    course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
-    if not course:
-        log(f"No course on DOW {dow} ({target}) — nothing to do.")
-        return
-
+    course     = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
     target_str = str(target)
-    log(f"Target: {target} — {course['name']}")
 
     with sync_playwright() as pw:
         browser, page = make_page(pw)
@@ -375,6 +370,12 @@ def cmd_book():
         try:
             token, uid = login(page)
             summary    = upcoming_summary(page, skip_dates)
+
+            if not course:
+                tg(summary.strip())
+                return
+
+            log(f"Target: {target} — {course['name']}")
 
             if target_str in skip_dates:
                 tg(f"⏭️ Skipping {course['name']} on {target} — in skip list" + summary)
