@@ -282,10 +282,10 @@ def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
         "Leistungsarten": [],
         "MitgliedsOption": 1,
     }, token=token)
-    if not ok and isinstance(data, dict):
+    if isinstance(data, dict):
         return data.get("orderId")
-    if ok:
-        return data  # booking succeeded (shouldn't happen here, but return it)
+    if ok and isinstance(data, str):
+        return data
     return None
 
 
@@ -459,10 +459,6 @@ def cmd_sync():
                 slot = find_slot(slots_cache[week_key], course["name"], str(target))
                 if not slot:
                     continue
-                if not is_booked(slot):
-                    log(f"  {target} {course['name']}: not booked, skip-list entry is a no-op")
-                    continue
-
                 log(f"  Cancelling {course['name']} on {target}…")
                 if cancel_slot(page, token, uid, slot):
                     cancelled.append(f"{target} {course['name']}")
