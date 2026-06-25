@@ -290,26 +290,69 @@ def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
 
 
 def _find_cancel_endpoint(page) -> str:
-    """Search the loaded Angular JS for the cancel/delete endpoint pattern."""
+    """Fetch all external Angular JS files and search for cancel/delete endpoint patterns."""
+    return page.evaluate("""async () => {
+        const urls = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
+        const sources = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent);
+        for (const url of urls) {
+            try { sources.push(await fetch(url).then(r => r.text())); } catch(e) {}
+        }
+        const all = sources.join(' ');
+        const hits = all.match(/['"](\/[^'"]{3,80}(?:delete|cancel|storno|buchung)[^'"]{0,40})['"]/gi) || [];
+        return [...new Set(hits)].slice(0, 30).join('\\n');
+    }""")
+
+
+def _find_angular_services(page) -> str:
+    """List Angular DI service names that sound booking/cancel related."""
     return page.evaluate("""() => {
-        const src = Array.from(document.querySelectorAll('script'))
-                        .map(s => s.src ? '' : s.textContent).join(' ');
-        const hits = src.match(/['"](\/[^'"]*(?:delete|cancel|storno)[^'"]*)['"]/gi) || [];
-        return [...new Set(hits)].slice(0, 20).join('\\n');
+        try {
+            const inj = angular.element(document.querySelector('[ng-app]')).injector();
+            const cache = inj._cache || inj.$$cache || {};
+            return Object.keys(cache).filter(n =>
+                /book|kurs|termin|member|cancel|storno|buchung/i.test(n)
+            ).join(', ');
+        } catch(e) { return 'err: ' + e.message; }
     }""")
 
 
 def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
     """Cancel a booked slot. Returns True on success."""
-    order_id = get_order_id(page, token, uid, slot)
+    ok_raw, data_raw = angular_api_raw(page, "POST", "/booking/create/kurs", {
+        "PersonNr":       uid,
+        "TerminartNr":    slot["Terminart_Nr"],
+        "Start":          slot["Start"],
+        "Ende":           slot["Ende"],
+        "Language":       "de",
+        "TerminNr":       slot["Nr"],
+        "Artikel":        slot["Bezeichnung"],
+        "RessourcenIds":  slot["RessourcesNrs"],
+        "Zahlart":        "",
+        "Leistungsarten": [],
+        "MitgliedsOption": 1,
+    }, token=token)
+
+    order_id = None
+    if isinstance(data_raw, dict):
+        order_id = data_raw.get("orderId")
+        log(f"  booking-create response keys: {list(data_raw.keys())}")
+    elif ok_raw and isinstance(data_raw, str):
+        order_id = data_raw
+
     if not order_id:
-        log(f"  Could not resolve orderId — skipping cancel")
+        log(f"  Could not resolve orderId (ok={ok_raw} data={str(data_raw)[:200]}) — skipping cancel")
+        log(f"  Angular services: {_find_angular_services(page)}")
+        log(f"  Cancel endpoint candidates: {_find_cancel_endpoint(page)}")
         return False
 
     log(f"  DELETE orderId={order_id}")
-    log(f"  Cancel endpoint candidates: {_find_cancel_endpoint(page)}")
     ok, resp = angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
     log(f"  DELETE ok={ok} resp={str(resp)[:300]}")
+
+    if ok:
+        log(f"  Angular services: {_find_angular_services(page)}")
+        log(f"  Cancel endpoint candidates: {_find_cancel_endpoint(page)}")
+
     return ok
 
 
