@@ -208,12 +208,12 @@ def angular_api_raw(page, method: str, path: str, body=None, token: Optional[str
             const $http = inj.get('$http');
             const cfg   = { method, url, data: body, headers: { 'Accept': 'application/json, text/plain, */*' } };
             if (token) cfg.headers['Authorization'] = 'Bearer ' + token;
-            return $http(cfg).then(r => ({ ok: true, data: r.data }))
-                             .catch(e => ({ ok: false, data: e.data }));
+            return $http(cfg).then(r => ({ ok: true, status: r.status, data: r.data }))
+                             .catch(e => ({ ok: false, status: e.status, data: e.data }));
         }""",
         [method, f"{API_BASE}{path}", body, token],
     )
-    return result["ok"], result["data"]
+    return result["ok"], result["data"], result.get("status")
 
 
 def login(page):
@@ -269,7 +269,7 @@ def book_slot(page, token: str, uid: str, slot: dict):
 def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
     """Return the booking orderId UUID for an already-booked slot.
     The server returns it in the error payload when a double-booking is attempted."""
-    ok, data = angular_api_raw(page, "POST", "/booking/create/kurs", {
+    ok, data, _ = angular_api_raw(page, "POST", "/booking/create/kurs", {
         "PersonNr":       uid,
         "TerminartNr":    slot["Terminart_Nr"],
         "Start":          slot["Start"],
@@ -318,7 +318,7 @@ def _find_angular_services(page) -> str:
 
 def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
     """Cancel a booked slot. Returns True on success."""
-    ok_raw, data_raw = angular_api_raw(page, "POST", "/booking/create/kurs", {
+    ok_raw, data_raw, _ = angular_api_raw(page, "POST", "/booking/create/kurs", {
         "PersonNr":       uid,
         "TerminartNr":    slot["Terminart_Nr"],
         "Start":          slot["Start"],
@@ -335,24 +335,17 @@ def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
     order_id = None
     if isinstance(data_raw, dict):
         order_id = data_raw.get("orderId")
-        log(f"  booking-create response keys: {list(data_raw.keys())}")
+        log(f"  booking-create ok={ok_raw} keys={list(data_raw.keys())}")
     elif ok_raw and isinstance(data_raw, str):
         order_id = data_raw
 
     if not order_id:
         log(f"  Could not resolve orderId (ok={ok_raw} data={str(data_raw)[:200]}) — skipping cancel")
-        log(f"  Angular services: {_find_angular_services(page)}")
-        log(f"  Cancel endpoint candidates: {_find_cancel_endpoint(page)}")
         return False
 
     log(f"  DELETE orderId={order_id}")
-    ok, resp = angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
-    log(f"  DELETE ok={ok} resp={str(resp)[:300]}")
-
-    if ok:
-        log(f"  Angular services: {_find_angular_services(page)}")
-        log(f"  Cancel endpoint candidates: {_find_cancel_endpoint(page)}")
-
+    ok, resp, status = angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
+    log(f"  DELETE http={status} ok={ok} resp={str(resp)[:300]}")
     return ok
 
 
@@ -658,7 +651,7 @@ def cmd_probe():
 
             if probe_slot:
                 # Try booking first to get an orderId, then probe cancel variants
-                ok_b, data_b = angular_api_raw(page, "POST", "/booking/create/kurs", {
+                ok_b, data_b, _ = angular_api_raw(page, "POST", "/booking/create/kurs", {
                     "PersonNr": uid, "TerminartNr": probe_slot["Terminart_Nr"],
                     "Start": probe_slot["Start"], "Ende": probe_slot["Ende"],
                     "Language": "de", "TerminNr": probe_slot["Nr"],
@@ -670,21 +663,32 @@ def cmd_probe():
                 order_id = data_b.get("orderId") if isinstance(data_b, dict) else (data_b if ok_b else None)
                 nr = probe_slot["Nr"]
 
+                # Probe for "my bookings" endpoints that might return the correct cancel ID
+                for probe_path in [
+                    f"/onlinebooking/getMemberCourses/{uid}",
+                    f"/onlinebooking/getMemberCourses",
+                    f"/booking/mybookings",
+                    f"/booking/getmemberbookings",
+                    f"/onlinebooking/member/{uid}/courses",
+                ]:
+                    ok_p, data_p, st_p = angular_api_raw(page, "GET", probe_path, token=token)
+                    if ok_p or st_p not in (None, 404, 405):
+                        log(f"  GET {probe_path} → http={st_p} ok={ok_p} data={str(data_p)[:200]}")
+
                 # Try each cancel variant
-                for method, path in [
-                    ("DELETE", f"/onlinebooking/deleteMember/{order_id}"),
-                    ("DELETE", f"/onlinebooking/deleteMember/{nr}"),
-                    ("DELETE", f"/booking/create/kurs/{order_id}"),
-                    ("DELETE", f"/booking/kurs/{order_id}"),
-                    ("POST",   f"/booking/delete/kurs"),
-                    ("DELETE", f"/booking/kursbuchung/{order_id}"),
+                for method, path, body in [
+                    ("DELETE", f"/onlinebooking/deleteMember/{order_id}", None),
+                    ("DELETE", f"/onlinebooking/deleteMember/{nr}", None),
+                    ("POST",   f"/onlinebooking/deleteMember/{order_id}", {"PersonNr": uid, "TerminNr": nr}),
+                    ("DELETE", f"/booking/create/kurs/{order_id}", None),
+                    ("DELETE", f"/booking/kurs/{order_id}", None),
+                    ("POST",   f"/booking/delete/kurs", {"orderId": order_id, "TerminNr": nr, "PersonNr": uid}),
                 ]:
                     if path.endswith("None"):
                         continue
-                    ok_c, resp_c = angular_api_raw(page, method, path,
-                        body={"orderId": order_id, "TerminNr": nr} if method == "POST" else None,
+                    ok_c, resp_c, st_c = angular_api_raw(page, method, path, body=body,
                         token=token)
-                    log(f"  {method} {path} → ok={ok_c} resp={str(resp_c)[:120]}")
+                    log(f"  {method} {path} → http={st_c} ok={ok_c} resp={str(resp_c)[:120]}")
 
             # Dump all /booking/ and /onlinebooking/ paths from external JS
             js_paths = page.evaluate("""async () => {
