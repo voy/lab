@@ -530,6 +530,35 @@ def cmd_debug():
         tg("\n".join(lines))
 
 
+def cmd_dom():
+    """Dump kursplan slot element class paths — used once to build the Greasemonkey selector."""
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        try:
+            login(page)
+            page.wait_for_timeout(2000)
+            result = page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('*'))
+                    .filter(el => el.children.length === 0 && /Kickbox|MMA|Yoga|Pilates|Kurs|Zumba/i.test(el.innerText || ''))
+                    .slice(0, 8)
+                    .map(el => {
+                        const path = [];
+                        let e = el;
+                        for (let i = 0; i < 6 && e && e.tagName !== 'BODY'; i++, e = e.parentElement) {
+                            const cls = Array.from(e.classList).join('.');
+                            path.unshift(e.tagName.toLowerCase() + (cls ? '.' + cls : ''));
+                        }
+                        return (el.innerText||'').trim().slice(0,50) + '\\n  ' + path.join(' > ');
+                    });
+            }""")
+            for r in result:
+                log(r)
+        except Exception as e:
+            log(f"Error: {e}")
+        finally:
+            browser.close()
+
+
 def cmd_list():
     with sync_playwright() as pw:
         browser, page = make_page(pw)
@@ -628,6 +657,7 @@ COMMANDS = {
     "debug":    cmd_debug,
     "list":     cmd_list,
     "book-all": cmd_book_all,
+    "dom":      cmd_dom,
 }
 
 if __name__ == "__main__":
