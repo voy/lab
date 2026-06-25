@@ -208,12 +208,12 @@ def angular_api_raw(page, method: str, path: str, body=None, token: Optional[str
             const $http = inj.get('$http');
             const cfg   = { method, url, data: body, headers: { 'Accept': 'application/json, text/plain, */*' } };
             if (token) cfg.headers['Authorization'] = 'Bearer ' + token;
-            return $http(cfg).then(r => ({ ok: true, status: r.status, data: r.data }))
-                             .catch(e => ({ ok: false, status: e.status, data: e.data }));
+            return $http(cfg).then(r => ({ ok: true, data: r.data }))
+                             .catch(e => ({ ok: false, data: e.data }));
         }""",
         [method, f"{API_BASE}{path}", body, token],
     )
-    return result["ok"], result["data"], result.get("status")
+    return result["ok"], result["data"]
 
 
 def login(page):
@@ -266,87 +266,6 @@ def book_slot(page, token: str, uid: str, slot: dict):
     }, token=token)
 
 
-def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
-    """Return the booking orderId UUID for an already-booked slot.
-    The server returns it in the error payload when a double-booking is attempted."""
-    ok, data, _ = angular_api_raw(page, "POST", "/booking/create/kurs", {
-        "PersonNr":       uid,
-        "TerminartNr":    slot["Terminart_Nr"],
-        "Start":          slot["Start"],
-        "Ende":           slot["Ende"],
-        "Language":       "de",
-        "TerminNr":       slot["Nr"],
-        "Artikel":        slot["Bezeichnung"],
-        "RessourcenIds":  slot["RessourcesNrs"],
-        "Zahlart":        "",
-        "Leistungsarten": [],
-        "MitgliedsOption": 1,
-    }, token=token)
-    if isinstance(data, dict):
-        return data.get("orderId")
-    if ok and isinstance(data, str):
-        return data
-    return None
-
-
-def _find_cancel_endpoint(page) -> str:
-    """Fetch all external Angular JS files and search for cancel/delete endpoint patterns."""
-    return page.evaluate("""async () => {
-        const urls = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
-        const sources = Array.from(document.querySelectorAll('script:not([src])')).map(s => s.textContent);
-        for (const url of urls) {
-            try { sources.push(await fetch(url).then(r => r.text())); } catch(e) {}
-        }
-        const all = sources.join(' ');
-        const hits = all.match(/['"](\/[^'"]{3,80}(?:delete|cancel|storno|buchung)[^'"]{0,40})['"]/gi) || [];
-        return [...new Set(hits)].slice(0, 30).join('\\n');
-    }""")
-
-
-def _find_angular_services(page) -> str:
-    """List Angular DI service names that sound booking/cancel related."""
-    return page.evaluate("""() => {
-        try {
-            const inj = angular.element(document.querySelector('[ng-app]')).injector();
-            const cache = inj._cache || inj.$$cache || {};
-            return Object.keys(cache).filter(n =>
-                /book|kurs|termin|member|cancel|storno|buchung/i.test(n)
-            ).join(', ');
-        } catch(e) { return 'err: ' + e.message; }
-    }""")
-
-
-def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
-    """Cancel a booked slot. Returns True on success."""
-    ok_raw, data_raw, _ = angular_api_raw(page, "POST", "/booking/create/kurs", {
-        "PersonNr":       uid,
-        "TerminartNr":    slot["Terminart_Nr"],
-        "Start":          slot["Start"],
-        "Ende":           slot["Ende"],
-        "Language":       "de",
-        "TerminNr":       slot["Nr"],
-        "Artikel":        slot["Bezeichnung"],
-        "RessourcenIds":  slot["RessourcesNrs"],
-        "Zahlart":        "",
-        "Leistungsarten": [],
-        "MitgliedsOption": 1,
-    }, token=token)
-
-    order_id = None
-    if isinstance(data_raw, dict):
-        order_id = data_raw.get("orderId")
-        log(f"  booking-create ok={ok_raw} keys={list(data_raw.keys())}")
-    elif ok_raw and isinstance(data_raw, str):
-        order_id = data_raw
-
-    if not order_id:
-        log(f"  Could not resolve orderId (ok={ok_raw} data={str(data_raw)[:200]}) — skipping cancel")
-        return False
-
-    log(f"  DELETE orderId={order_id}")
-    ok, resp, status = angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
-    log(f"  DELETE http={status} ok={ok} resp={str(resp)[:300]}")
-    return ok
 
 
 def slot_status(slot: dict) -> str:
@@ -479,7 +398,7 @@ def cmd_book():
 
 
 def cmd_sync():
-    """Cancel any booked slots that appear in the skip list."""
+    """Warn about published class slots on skip-list dates (online cancellation not supported)."""
     skip_dates = fetch_skip_dates()
     if not skip_dates:
         log("Skip list is empty — nothing to sync.")
@@ -487,9 +406,9 @@ def cmd_sync():
 
     with sync_playwright() as pw:
         browser, page = make_page(pw)
-        cancelled = []
+        warnings = []
         try:
-            token, uid  = login(page)
+            login(page)
             today       = datetime.now(tz=BERLIN).date()
             slots_cache: dict = {}
 
@@ -507,11 +426,8 @@ def cmd_sync():
                     slots_cache[week_key] = get_week_slots(page, target)
 
                 slot = find_slot(slots_cache[week_key], course["name"], str(target))
-                if not slot:
-                    continue
-                log(f"  Cancelling {course['name']} on {target}…")
-                if cancel_slot(page, token, uid, slot):
-                    cancelled.append(f"{target} {course['name']}")
+                if slot:
+                    warnings.append(f"  • {target} {course['name']}")
 
         except Exception as e:
             tg(f"❌ Sync error: {e}")
@@ -519,10 +435,14 @@ def cmd_sync():
         finally:
             browser.close()
 
-        if cancelled:
-            tg("🗑️ Cancelled:\n" + "\n".join(f"  • {c}" for c in cancelled))
+        if warnings:
+            tg(
+                "⚠️ Skip-list dates with published slots — cancel manually if booked:\n"
+                + "\n".join(warnings)
+                + f"\n\n🔗 {BOOKING_URL}"
+            )
         else:
-            log("Nothing to cancel.")
+            log("No upcoming skip-list dates have published slots.")
 
 
 def cmd_debug():
@@ -609,118 +529,6 @@ def cmd_list():
             browser.close()
 
 
-def cmd_probe():
-    """Try multiple cancel endpoint variants and dump JS paths to find the correct one."""
-    with sync_playwright() as pw:
-        browser, page = make_page(pw)
-        captured = []
-
-        def on_request(req):
-            if req.resource_type in ("xhr", "fetch", "other"):
-                captured.append(f"{req.method} {req.url}")
-
-        page.on("request", on_request)
-        try:
-            token, uid = login(page)
-            log(f"Logged in as {uid[:8]}…")
-
-            # Get a real slot + its Nr
-            today = datetime.now(tz=BERLIN).date()
-            probe_slot = None
-            for course in CONFIG["COURSES"]:
-                if course["dow"] == today.weekday():
-                    slots = get_week_slots(page, today)
-                    probe_slot = find_slot(slots, course["name"], str(today))
-                    if probe_slot:
-                        log(f"Slot Nr={probe_slot['Nr']} SerienterminNr={probe_slot['SerienterminNr']}")
-                    break
-
-            if not probe_slot:
-                log("No slot for today's class — looking for next available")
-                for offset in range(1, 15):
-                    t = today + timedelta(days=offset)
-                    for course in CONFIG["COURSES"]:
-                        if course["dow"] == t.weekday():
-                            slots = get_week_slots(page, t)
-                            probe_slot = find_slot(slots, course["name"], str(t))
-                            if probe_slot:
-                                log(f"Slot for {t}: Nr={probe_slot['Nr']} SerienterminNr={probe_slot['SerienterminNr']}")
-                                break
-                    if probe_slot:
-                        break
-
-            if probe_slot:
-                # Test: book a fresh slot, capture its real orderId, then immediately cancel
-                # Find a FUTURE unbooked slot (not today) for the test
-                test_slot = None
-                for offset in range(1, 30):
-                    t = today + timedelta(days=offset)
-                    for course in CONFIG["COURSES"]:
-                        if course["dow"] == t.weekday():
-                            slots = get_week_slots(page, t)
-                            s = find_slot(slots, course["name"], str(t))
-                            if s and not s.get("NichtBuchbar") and not s.get("Ausgebucht"):
-                                test_slot = s
-                                log(f"Test slot: {t} Nr={s['Nr']} '{s['Bezeichnung']}'")
-                                break
-                    if test_slot:
-                        break
-
-                if test_slot:
-                    # Book it fresh → get the REAL orderId
-                    ok_b, data_b, st_b = angular_api_raw(page, "POST", "/booking/create/kurs", {
-                        "PersonNr": uid, "TerminartNr": test_slot["Terminart_Nr"],
-                        "Start": test_slot["Start"], "Ende": test_slot["Ende"],
-                        "Language": "de", "TerminNr": test_slot["Nr"],
-                        "Artikel": test_slot["Bezeichnung"], "RessourcenIds": test_slot["RessourcesNrs"],
-                        "Zahlart": "", "Leistungsarten": [], "MitgliedsOption": 1,
-                    }, token=token)
-                    log(f"book test slot: http={st_b} ok={ok_b} data={str(data_b)[:300]}")
-
-                    real_order_id = data_b.get("orderId") if isinstance(data_b, dict) else (data_b if ok_b else None)
-                    nr = test_slot["Nr"]
-                    log(f"real_order_id={real_order_id} nr={nr}")
-
-                    if real_order_id:
-                        # Now immediately cancel with the REAL orderId
-                        ok_c, resp_c, st_c = angular_api_raw(page, "DELETE",
-                            f"/onlinebooking/deleteMember/{real_order_id}", token=token)
-                        log(f"cancel with real orderId → http={st_c} ok={ok_c} resp={str(resp_c)[:200]}")
-
-                        # Check if slot is still booked
-                        ok_b2, data_b2, st_b2 = angular_api_raw(page, "POST", "/booking/create/kurs", {
-                            "PersonNr": uid, "TerminartNr": test_slot["Terminart_Nr"],
-                            "Start": test_slot["Start"], "Ende": test_slot["Ende"],
-                            "Language": "de", "TerminNr": test_slot["Nr"],
-                            "Artikel": test_slot["Bezeichnung"], "RessourcenIds": test_slot["RessourcesNrs"],
-                            "Zahlart": "", "Leistungsarten": [], "MitgliedsOption": 1,
-                        }, token=token)
-                        if ok_b2:
-                            log(f"✅ CANCEL WORKED — slot is free again (re-booked ok={ok_b2})")
-                            # Cancel the re-book too
-                            re_id = data_b2.get("orderId") if isinstance(data_b2, dict) else data_b2
-                            angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{re_id}", token=token)
-                        else:
-                            msg = data_b2.get("message") if isinstance(data_b2, dict) else str(data_b2)
-                            log(f"❌ CANCEL FAILED — slot still booked: {msg}")
-                            # Still booked, clean up: try another cancel approach or leave it
-
-            # Dump all /booking/ and /onlinebooking/ paths from external JS
-            js_paths = page.evaluate("""async () => {
-                const urls = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
-                const all = (await Promise.all(urls.map(u => fetch(u).then(r => r.text()).catch(() => '')))).join(' ');
-                const hits = all.match(/['"](\/(?:booking|onlinebooking|onlinebuchung)[^'"]{0,60})['"]/gi) || [];
-                return [...new Set(hits)].sort().join('\\n');
-            }""")
-            log(f"All booking-related JS paths:\n{js_paths}")
-
-            log(f"All captured XHR (last 20):\n" + "\n".join(captured[-20:]))
-
-        except Exception as e:
-            log(f"Probe error: {e}")
-        finally:
-            browser.close()
-
 
 def cmd_book_all():
     skip_dates = fetch_skip_dates()
@@ -787,7 +595,6 @@ COMMANDS = {
     "debug":    cmd_debug,
     "list":     cmd_list,
     "book-all": cmd_book_all,
-    "probe":    cmd_probe,
 }
 
 if __name__ == "__main__":
