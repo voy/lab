@@ -400,20 +400,23 @@ def cmd_book():
 
 
 def get_booked_course_dates(page) -> set:
-    """Navigate to the 'my course appointments' page and return a set of booked date strings (YYYY-MM-DD)."""
-    page.evaluate("([hash]) => { window.location.hash = hash; }",
-                  [MY_COURSES_URL.split("#")[1]])
-    page.wait_for_timeout(3000)
-
-    raw = page.evaluate("""() => {
-        return Array.from(document.querySelectorAll('[class*="termin"], [class*="kurs"], [class*="item"], li, tr'))
-            .map(el => el.innerText)
-            .filter(t => t && t.trim().length > 0)
-            .join('\\n');
+    """Navigate to 'my course appointments' and return booked date strings (YYYY-MM-DD)."""
+    result = page.evaluate("""() => {
+        try {
+            const inj = angular.element(document.querySelector('[ng-app]')).injector();
+            const $location = inj.get('$location');
+            const $rootScope = inj.get('$rootScope');
+            $location.path('/meineterminekurs');
+            $rootScope.$apply();
+            return 'ok:' + $location.absUrl();
+        } catch(e) { return 'err:' + e.message; }
     }""")
-    log(f"meineterminekurs DOM text:\n{raw[:1000]}")
+    log(f"meineterminekurs nav: {result}")
+    page.wait_for_load_state("networkidle", timeout=10_000)
 
-    # Extract dates in German format dd.mm.yyyy → convert to YYYY-MM-DD
+    raw = page.evaluate("() => document.body.innerText")
+    log(f"meineterminekurs body text:\n{raw[:2000]}")
+
     booked = set()
     for m in re.finditer(r'(\d{2})\.(\d{2})\.(\d{4})', raw):
         d, mo, y = m.group(1), m.group(2), m.group(3)
