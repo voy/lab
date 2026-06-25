@@ -616,6 +616,68 @@ def cmd_list():
             browser.close()
 
 
+def cmd_probe():
+    """Intercept all XHR/fetch requests while navigating to booking overview and clicking cancel."""
+    with sync_playwright() as pw:
+        browser, page = make_page(pw)
+        captured = []
+
+        def on_request(req):
+            if req.resource_type in ("xhr", "fetch", "other") and API_BASE in req.url:
+                captured.append(f"{req.method} {req.url.replace(API_BASE, '')}")
+
+        page.on("request", on_request)
+        try:
+            token, uid = login(page)
+            log(f"Logged in as {uid[:8]}…")
+
+            # Navigate to booking overview via Angular router
+            nav_result = page.evaluate("""() => {
+                try {
+                    const inj = angular.element(document.querySelector('[ng-app]')).injector();
+                    const $location = inj.get('$location');
+                    const $rootScope = inj.get('$rootScope');
+                    $location.path('/kursbuchungubersicht');
+                    $rootScope.$apply();
+                    return 'ok:' + $location.path();
+                } catch(e) { return 'err:' + e.message; }
+            }""")
+            log(f"Nav: {nav_result}")
+            page.wait_for_timeout(3000)
+            log(f"XHR after nav: {json.dumps(captured, indent=2)}")
+
+            # Dump all ng-click and button attrs
+            dom_info = page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('[ng-click], button, a'))
+                    .map(el => ({
+                        tag: el.tagName,
+                        text: el.textContent.trim().slice(0, 60),
+                        ngclick: el.getAttribute('ng-click'),
+                    }))
+                    .filter(el => el.ngclick || /cancel|storn|lösch|entfern|abmeld|buchen/i.test(el.text))
+                    .slice(0, 20);
+            }""")
+            log(f"Cancel-ish DOM: {json.dumps(dom_info, indent=2)}")
+
+            # Also fetch and dump slot keys for today's class
+            today = datetime.now(tz=BERLIN).date()
+            for course in CONFIG["COURSES"]:
+                if course["dow"] == today.weekday():
+                    slots = get_week_slots(page, today)
+                    slot = find_slot(slots, course["name"], str(today))
+                    if slot:
+                        log(f"Slot keys for {course['name']}: {sorted(slot.keys())}")
+                        log(f"Full slot: {json.dumps(slot)}")
+                    break
+
+            log(f"All captured XHR: {json.dumps(captured, indent=2)}")
+
+        except Exception as e:
+            log(f"Probe error: {e}")
+        finally:
+            browser.close()
+
+
 def cmd_book_all():
     skip_dates = fetch_skip_dates()
     with sync_playwright() as pw:
@@ -681,6 +743,7 @@ COMMANDS = {
     "debug":    cmd_debug,
     "list":     cmd_list,
     "book-all": cmd_book_all,
+    "probe":    cmd_probe,
 }
 
 if __name__ == "__main__":

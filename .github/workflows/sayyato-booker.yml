@@ -10,7 +10,7 @@ on:
         required: false
         default: 'book'
         type: choice
-        options: [book, sync, debug, list, book-all]
+        options: [book, sync, debug, list, book-all, probe]
 
 env:
   ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node20
