@@ -291,14 +291,20 @@ def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
 
 def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
     """Cancel a booked slot. Returns True on success."""
+    # Capture all XHR requests made during this call so we can inspect the actual URL used
+    captured: list = []
+    page.on("request", lambda r: captured.append(f"{r.method} {r.url}"))
+
     order_id = get_order_id(page, token, uid, slot)
     if not order_id:
-        log(f"  Could not resolve orderId for slot {slot.get('Nr')} — skipping cancel")
+        log(f"  Could not resolve orderId — skipping cancel")
         return False
+
     log(f"  DELETE orderId={order_id}")
-    resp = angular_api(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
-    log(f"  DELETE response: {str(resp)[:200]}")
-    return True
+    ok, resp = angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
+    log(f"  DELETE ok={ok} resp={str(resp)[:300]}")
+    log(f"  All requests captured: {captured[-6:]}")
+    return ok
 
 
 def slot_status(slot: dict) -> str:
