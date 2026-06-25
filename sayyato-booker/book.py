@@ -289,21 +289,27 @@ def get_order_id(page, token: str, uid: str, slot: dict) -> Optional[str]:
     return None
 
 
+def _find_cancel_endpoint(page) -> str:
+    """Search the loaded Angular JS for the cancel/delete endpoint pattern."""
+    return page.evaluate("""() => {
+        const src = Array.from(document.querySelectorAll('script'))
+                        .map(s => s.src ? '' : s.textContent).join(' ');
+        const hits = src.match(/['"](\/[^'"]*(?:delete|cancel|storno)[^'"]*)['"]/gi) || [];
+        return [...new Set(hits)].slice(0, 20).join('\\n');
+    }""")
+
+
 def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
     """Cancel a booked slot. Returns True on success."""
-    # Capture all XHR requests made during this call so we can inspect the actual URL used
-    captured: list = []
-    page.on("request", lambda r: captured.append(f"{r.method} {r.url}"))
-
     order_id = get_order_id(page, token, uid, slot)
     if not order_id:
         log(f"  Could not resolve orderId — skipping cancel")
         return False
 
     log(f"  DELETE orderId={order_id}")
+    log(f"  Cancel endpoint candidates: {_find_cancel_endpoint(page)}")
     ok, resp = angular_api_raw(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
     log(f"  DELETE ok={ok} resp={str(resp)[:300]}")
-    log(f"  All requests captured: {captured[-6:]}")
     return ok
 
 
