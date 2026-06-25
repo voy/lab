@@ -295,7 +295,9 @@ def cancel_slot(page, token: str, uid: str, slot: dict) -> bool:
     if not order_id:
         log(f"  Could not resolve orderId for slot {slot.get('Nr')} — skipping cancel")
         return False
-    angular_api(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
+    log(f"  DELETE orderId={order_id}")
+    resp = angular_api(page, "DELETE", f"/onlinebooking/deleteMember/{order_id}", token=token)
+    log(f"  DELETE response: {str(resp)[:200]}")
     return True
 
 
