@@ -12,6 +12,7 @@ Usage:
 
 import json
 import json5
+import re
 import sys
 from datetime import date, timedelta, datetime, timezone
 from pathlib import Path
@@ -33,6 +34,7 @@ GIST_URL           = CONFIG.get("SKIP_GIST_URL", "")
 GIST_EDIT          = GIST_URL.replace("gist.githubusercontent.com", "gist.github.com").split("/raw/")[0] if GIST_URL else ""
 _api_host          = urlparse(API_BASE).hostname
 BOOKING_URL        = f"https://{_api_host}/booking/#!/kursplan?cid={CLUB_ID}&id={PLAN_ID}"
+MY_COURSES_URL     = f"https://{_api_host}/booking/#!/meineterminekurs?cid={CLUB_ID}&id={PLAN_ID}"
 OPENHOLIDAYS_BASE  = CONFIG.get("OPENHOLIDAYS_BASE", "https://openholidaysapi.org")
 HOLIDAYS_GIST_URL  = CONFIG.get("HOLIDAYS_GIST_URL", "")
 
@@ -397,8 +399,30 @@ def cmd_book():
             browser.close()
 
 
+def get_booked_course_dates(page) -> set:
+    """Navigate to the 'my course appointments' page and return a set of booked date strings (YYYY-MM-DD)."""
+    page.evaluate("([hash]) => { window.location.hash = hash; }",
+                  [MY_COURSES_URL.split("#")[1]])
+    page.wait_for_timeout(3000)
+
+    raw = page.evaluate("""() => {
+        return Array.from(document.querySelectorAll('[class*="termin"], [class*="kurs"], [class*="item"], li, tr'))
+            .map(el => el.innerText)
+            .filter(t => t && t.trim().length > 0)
+            .join('\\n');
+    }""")
+    log(f"meineterminekurs DOM text:\n{raw[:1000]}")
+
+    # Extract dates in German format dd.mm.yyyy → convert to YYYY-MM-DD
+    booked = set()
+    for m in re.finditer(r'(\d{2})\.(\d{2})\.(\d{4})', raw):
+        d, mo, y = m.group(1), m.group(2), m.group(3)
+        booked.add(f"{y}-{mo}-{d}")
+    return booked
+
+
 def cmd_sync():
-    """Warn about published class slots on skip-list dates (online cancellation not supported)."""
+    """Warn about booked class slots on skip-list dates (online cancellation not supported)."""
     skip_dates = fetch_skip_dates()
     if not skip_dates:
         log("Skip list is empty — nothing to sync.")
@@ -409,23 +433,29 @@ def cmd_sync():
         warnings = []
         try:
             login(page)
+            booked_dates = get_booked_course_dates(page)
+            log(f"Booked dates from UI: {sorted(booked_dates)}")
+
             today       = datetime.now(tz=BERLIN).date()
             slots_cache: dict = {}
 
             for offset in range(0, 90):
                 target = today + timedelta(days=offset)
-                if str(target) not in skip_dates:
+                target_str = str(target)
+                if target_str not in skip_dates:
                     continue
                 dow    = target.weekday()
                 course = next((c for c in CONFIG["COURSES"] if c["dow"] == dow), None)
                 if not course:
+                    continue
+                if target_str not in booked_dates:
                     continue
 
                 week_key = str(target - timedelta(days=dow))
                 if week_key not in slots_cache:
                     slots_cache[week_key] = get_week_slots(page, target)
 
-                slot = find_slot(slots_cache[week_key], course["name"], str(target))
+                slot = find_slot(slots_cache[week_key], course["name"], target_str)
                 if slot:
                     warnings.append(f"  • {target} {course['name']}")
 
@@ -437,12 +467,12 @@ def cmd_sync():
 
         if warnings:
             tg(
-                "⚠️ Skip-list dates with published slots — cancel manually if booked:\n"
+                "⚠️ Booked on skip-list dates — cancel manually:\n"
                 + "\n".join(warnings)
-                + f"\n\n🔗 {BOOKING_URL}"
+                + f"\n\n🔗 {MY_COURSES_URL}"
             )
         else:
-            log("No upcoming skip-list dates have published slots.")
+            log("No skip-list dates are booked.")
 
 
 def cmd_debug():
