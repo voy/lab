@@ -431,7 +431,7 @@ def cmd_book():
             token, uid = login(page)
 
             # Confirm (or last-minute book) today's class via a definitive booking attempt
-            if today_course:
+            if today_course and today_str not in skip_dates:
                 today_slots = get_week_slots(page, today)
                 today_slot  = find_slot(today_slots, today_course["name"], today_str)
                 if today_slot:
@@ -617,60 +617,85 @@ def cmd_list():
 
 
 def cmd_probe():
-    """Intercept all XHR/fetch requests while navigating to booking overview and clicking cancel."""
+    """Try multiple cancel endpoint variants and dump JS paths to find the correct one."""
     with sync_playwright() as pw:
         browser, page = make_page(pw)
         captured = []
 
         def on_request(req):
-            if req.resource_type in ("xhr", "fetch", "other") and API_BASE in req.url:
-                captured.append(f"{req.method} {req.url.replace(API_BASE, '')}")
+            if req.resource_type in ("xhr", "fetch", "other"):
+                captured.append(f"{req.method} {req.url}")
 
         page.on("request", on_request)
         try:
             token, uid = login(page)
             log(f"Logged in as {uid[:8]}…")
 
-            # Navigate to booking overview via Angular router
-            nav_result = page.evaluate("""() => {
-                try {
-                    const inj = angular.element(document.querySelector('[ng-app]')).injector();
-                    const $location = inj.get('$location');
-                    const $rootScope = inj.get('$rootScope');
-                    $location.path('/kursbuchungubersicht');
-                    $rootScope.$apply();
-                    return 'ok:' + $location.path();
-                } catch(e) { return 'err:' + e.message; }
-            }""")
-            log(f"Nav: {nav_result}")
-            page.wait_for_timeout(3000)
-            log(f"XHR after nav: {json.dumps(captured, indent=2)}")
-
-            # Dump all ng-click and button attrs
-            dom_info = page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('[ng-click], button, a'))
-                    .map(el => ({
-                        tag: el.tagName,
-                        text: el.textContent.trim().slice(0, 60),
-                        ngclick: el.getAttribute('ng-click'),
-                    }))
-                    .filter(el => el.ngclick || /cancel|storn|lösch|entfern|abmeld|buchen/i.test(el.text))
-                    .slice(0, 20);
-            }""")
-            log(f"Cancel-ish DOM: {json.dumps(dom_info, indent=2)}")
-
-            # Also fetch and dump slot keys for today's class
+            # Get a real slot + its Nr
             today = datetime.now(tz=BERLIN).date()
+            probe_slot = None
             for course in CONFIG["COURSES"]:
                 if course["dow"] == today.weekday():
                     slots = get_week_slots(page, today)
-                    slot = find_slot(slots, course["name"], str(today))
-                    if slot:
-                        log(f"Slot keys for {course['name']}: {sorted(slot.keys())}")
-                        log(f"Full slot: {json.dumps(slot)}")
+                    probe_slot = find_slot(slots, course["name"], str(today))
+                    if probe_slot:
+                        log(f"Slot Nr={probe_slot['Nr']} SerienterminNr={probe_slot['SerienterminNr']}")
                     break
 
-            log(f"All captured XHR: {json.dumps(captured, indent=2)}")
+            if not probe_slot:
+                log("No slot for today's class — looking for next available")
+                for offset in range(1, 15):
+                    t = today + timedelta(days=offset)
+                    for course in CONFIG["COURSES"]:
+                        if course["dow"] == t.weekday():
+                            slots = get_week_slots(page, t)
+                            probe_slot = find_slot(slots, course["name"], str(t))
+                            if probe_slot:
+                                log(f"Slot for {t}: Nr={probe_slot['Nr']} SerienterminNr={probe_slot['SerienterminNr']}")
+                                break
+                    if probe_slot:
+                        break
+
+            if probe_slot:
+                # Try booking first to get an orderId, then probe cancel variants
+                ok_b, data_b = angular_api_raw(page, "POST", "/booking/create/kurs", {
+                    "PersonNr": uid, "TerminartNr": probe_slot["Terminart_Nr"],
+                    "Start": probe_slot["Start"], "Ende": probe_slot["Ende"],
+                    "Language": "de", "TerminNr": probe_slot["Nr"],
+                    "Artikel": probe_slot["Bezeichnung"], "RessourcenIds": probe_slot["RessourcesNrs"],
+                    "Zahlart": "", "Leistungsarten": [], "MitgliedsOption": 1,
+                }, token=token)
+                log(f"booking-create: ok={ok_b} data={str(data_b)[:300]}")
+
+                order_id = data_b.get("orderId") if isinstance(data_b, dict) else (data_b if ok_b else None)
+                nr = probe_slot["Nr"]
+
+                # Try each cancel variant
+                for method, path in [
+                    ("DELETE", f"/onlinebooking/deleteMember/{order_id}"),
+                    ("DELETE", f"/onlinebooking/deleteMember/{nr}"),
+                    ("DELETE", f"/booking/create/kurs/{order_id}"),
+                    ("DELETE", f"/booking/kurs/{order_id}"),
+                    ("POST",   f"/booking/delete/kurs"),
+                    ("DELETE", f"/booking/kursbuchung/{order_id}"),
+                ]:
+                    if path.endswith("None"):
+                        continue
+                    ok_c, resp_c = angular_api_raw(page, method, path,
+                        body={"orderId": order_id, "TerminNr": nr} if method == "POST" else None,
+                        token=token)
+                    log(f"  {method} {path} → ok={ok_c} resp={str(resp_c)[:120]}")
+
+            # Dump all /booking/ and /onlinebooking/ paths from external JS
+            js_paths = page.evaluate("""async () => {
+                const urls = Array.from(document.querySelectorAll('script[src]')).map(s => s.src);
+                const all = (await Promise.all(urls.map(u => fetch(u).then(r => r.text()).catch(() => '')))).join(' ');
+                const hits = all.match(/['"](\/(?:booking|onlinebooking|onlinebuchung)[^'"]{0,60})['"]/gi) || [];
+                return [...new Set(hits)].sort().join('\\n');
+            }""")
+            log(f"All booking-related JS paths:\n{js_paths}")
+
+            log(f"All captured XHR (last 20):\n" + "\n".join(captured[-20:]))
 
         except Exception as e:
             log(f"Probe error: {e}")
