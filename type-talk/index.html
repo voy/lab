@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="cs">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Grandma Talker</title>
+  <title>Type Talk</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -121,27 +121,34 @@
       gap: 10px;
       padding: 16px 0 calc(16px + env(safe-area-inset-bottom, 0px));
       flex-shrink: 0;
+      align-items: center;
     }
 
-    .display-actions button {
+    #back-btn {
+      height: 40px;
+      padding: 0 16px;
+      border-radius: 10px;
+      border: none;
+      background: #e5e5ea;
+      color: #999;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #delete-back-btn {
       flex: 1;
       height: 56px;
       border-radius: 14px;
       border: none;
+      background: #111;
+      color: #fff;
       font-size: 17px;
       font-weight: 600;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
-    }
-
-    #back-btn {
-      background: #e5e5ea;
-      color: #888;
-    }
-
-    #delete-back-btn {
-      background: #111;
-      color: #fff;
     }
 
     /* mic unavailable */
