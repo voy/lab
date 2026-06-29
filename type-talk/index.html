@@ -194,10 +194,13 @@
   const backBtn      = document.getElementById('back-btn');
   const deleteBackBtn = document.getElementById('delete-back-btn');
 
+  let stopDictation = () => {};
+
   // ── Show / hide display ──────────────────────────────────────────────
   showBtn.addEventListener('click', () => {
     const text = textarea.value.trim();
     if (!text) return;
+    stopDictation();
     displayText.textContent = text;
     displayText.style.fontSize = scaledFontSize(text);
     displayScreen.classList.add('active');
@@ -276,6 +279,8 @@
 
     let listening = false;
     let committedText = '';
+
+    stopDictation = () => { if (listening) rec.stop(); };
 
     micBtn.addEventListener('click', () => {
       if (listening) { rec.stop(); return; }
