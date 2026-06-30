@@ -459,7 +459,7 @@ def cmd_sync():
                     slots_cache[week_key] = get_week_slots(page, target)
 
                 slot = find_slot(slots_cache[week_key], course["name"], target_str)
-                if slot:
+                if slot and is_booked(slot):
                     warnings.append(f"  • {target} {course['name']}")
 
         except Exception as e:
