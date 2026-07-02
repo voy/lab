@@ -312,6 +312,7 @@
   </div>
   <div class="header-actions">
     <button class="btn" id="btn-open">Open</button>
+    <button class="btn" id="btn-reload" hidden>Reload</button>
     <button class="btn" id="btn-read">Read</button>
 <button class="btn" id="btn-clear" disabled>Clear</button>
     <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden>
@@ -344,7 +345,10 @@
   const clearBtn    = document.getElementById('btn-clear');
   const readBtn     = document.getElementById('btn-read');
   const openBtn     = document.getElementById('btn-open');
+  const reloadBtn   = document.getElementById('btn-reload');
   const fileInput   = document.getElementById('file-input');
+
+  let fileHandle = null;
 
   const STORAGE_KEY      = 'markdown-viewer:content';
   const STORAGE_READ_KEY = 'markdown-viewer:readState';
@@ -371,6 +375,8 @@
 
   function loadFile(file) {
     if (!file) return;
+    fileHandle = null;
+    reloadBtn.hidden = true;
     const reader = new FileReader();
     reader.onload = ev => {
       inputEl.value = ev.target.result;
@@ -380,8 +386,38 @@
     reader.readAsText(file);
   }
 
+  async function loadFileHandle(handle) {
+    const file = await handle.getFile();
+    inputEl.value = await file.text();
+    save();
+    update();
+  }
+
   // ── File picker ──
-  openBtn.addEventListener('click', () => fileInput.click());
+  const FILE_PICKER_TYPES = [{
+    description: 'Markdown',
+    accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] },
+  }];
+
+  openBtn.addEventListener('click', async () => {
+    if (!window.showOpenFilePicker) {
+      fileInput.click();
+      return;
+    }
+    try {
+      const [handle] = await window.showOpenFilePicker({ types: FILE_PICKER_TYPES });
+      fileHandle = handle;
+      await loadFileHandle(handle);
+      reloadBtn.hidden = false;
+    } catch (err) {
+      if (err.name !== 'AbortError') console.error(err);
+    }
+  });
+
+  reloadBtn.addEventListener('click', () => {
+    if (fileHandle) loadFileHandle(fileHandle);
+  });
+
   fileInput.addEventListener('change', () => {
     loadFile(fileInput.files[0]);
     fileInput.value = '';
@@ -462,6 +498,8 @@
     readState = 0;
     applyReadState();
     localStorage.setItem(STORAGE_READ_KEY, 0);
+    fileHandle = null;
+    reloadBtn.hidden = true;
     update();
   });
 
