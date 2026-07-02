@@ -311,8 +311,10 @@
     <span>markdown-viewer</span>
   </div>
   <div class="header-actions">
+    <button class="btn" id="btn-open">Open</button>
     <button class="btn" id="btn-read">Read</button>
 <button class="btn" id="btn-clear" disabled>Clear</button>
+    <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden>
   </div>
 </header>
 
@@ -341,6 +343,8 @@
   const statsEl   = document.getElementById('stats');
   const clearBtn    = document.getElementById('btn-clear');
   const readBtn     = document.getElementById('btn-read');
+  const openBtn     = document.getElementById('btn-open');
+  const fileInput   = document.getElementById('file-input');
 
   const STORAGE_KEY      = 'markdown-viewer:content';
   const STORAGE_READ_KEY = 'markdown-viewer:readState';
@@ -365,6 +369,24 @@
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) { inputEl.value = saved; update(); }
 
+  function loadFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      inputEl.value = ev.target.result;
+      save();
+      update();
+    };
+    reader.readAsText(file);
+  }
+
+  // ── File picker ──
+  openBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    loadFile(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
   // ── Drag and drop ──
   const dropOverlay = document.getElementById('drop-overlay');
   let dragDepth = 0;
@@ -385,15 +407,7 @@
     e.preventDefault();
     dragDepth = 0;
     dropOverlay.classList.remove('active');
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      inputEl.value = ev.target.result;
-      save();
-      update();
-    };
-    reader.readAsText(file);
+    loadFile(e.dataTransfer.files[0]);
   });
 
   // Prevent textarea from swallowing drops
@@ -403,15 +417,7 @@
     e.stopPropagation();
     dragDepth = 0;
     dropOverlay.classList.remove('active');
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      inputEl.value = ev.target.result;
-      save();
-      update();
-    };
-    reader.readAsText(file);
+    loadFile(e.dataTransfer.files[0]);
   });
 
   let debounceTimer;

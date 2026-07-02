@@ -4,7 +4,7 @@ A minimal Markdown viewer. Paste or type Markdown on the left, see it rendered l
 
 ## Features
 
-- Drag and drop a file to load it
+- Drag and drop a file to load it, or use the Open button to pick one
 - Live preview as you type
 - **Read mode** — hides the editor and centers the content in a readable column (normal or wide)
 - Content is persisted in `localStorage` and restored on next open
