@@ -113,13 +113,13 @@
       z-index: 1;
     }
 
-    .segmented .btn.active {
+    .btn.active {
       background: var(--accent);
       border-color: var(--accent);
       color: var(--bg);
     }
 
-    .segmented .btn.active:hover { color: var(--bg); }
+    .btn.active:hover { color: var(--bg); }
 
     .main {
       display: grid;
@@ -368,10 +368,10 @@
     <button class="btn" id="btn-open">Open</button>
     <button class="btn" id="btn-reload" hidden>Reload</button>
     <div class="segmented">
-      <button class="btn" id="btn-edit" data-state="0">Edit</button>
-      <button class="btn" id="btn-view-read" data-state="1">Read</button>
-      <button class="btn" id="btn-view-wide" data-state="2">Wide</button>
+      <button class="btn" id="btn-edit">Edit</button>
+      <button class="btn" id="btn-view-read">Read</button>
     </div>
+    <button class="btn" id="btn-wide" disabled>Wide</button>
     <button class="btn" id="btn-clear" disabled>Clear</button>
     <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden>
   </div>
@@ -401,7 +401,9 @@
   const previewEl = document.getElementById('preview');
   const statsEl   = document.getElementById('stats');
   const clearBtn    = document.getElementById('btn-clear');
-  const viewBtns    = document.querySelectorAll('.segmented .btn');
+  const editBtn     = document.getElementById('btn-edit');
+  const readBtn     = document.getElementById('btn-view-read');
+  const wideBtn     = document.getElementById('btn-wide');
   const openBtn     = document.getElementById('btn-open');
   const reloadBtn   = document.getElementById('btn-reload');
   const fileInput   = document.getElementById('file-input');
@@ -409,27 +411,39 @@
   let fileHandle = null;
 
   const STORAGE_KEY      = 'markdown-viewer:content';
-  const STORAGE_READ_KEY = 'markdown-viewer:readState';
+  const STORAGE_MODE_KEY = 'markdown-viewer:mode';
+  const STORAGE_WIDE_KEY = 'markdown-viewer:wide';
 
-  let readState = parseInt(localStorage.getItem(STORAGE_READ_KEY) || '0', 10);
+  let mode = localStorage.getItem(STORAGE_MODE_KEY) || 'edit';
+  let wide = localStorage.getItem(STORAGE_WIDE_KEY) === '1';
 
-  function applyReadState() {
+  function applyViewState() {
     document.body.classList.remove('read-mode', 'read-wide');
-    if (readState === 1) document.body.classList.add('read-mode');
-    if (readState === 2) document.body.classList.add('read-wide');
-    viewBtns.forEach(btn => {
-      btn.classList.toggle('active', Number(btn.dataset.state) === readState);
-    });
+    if (mode === 'read') document.body.classList.add(wide ? 'read-wide' : 'read-mode');
+    editBtn.classList.toggle('active', mode === 'edit');
+    readBtn.classList.toggle('active', mode === 'read');
+    wideBtn.classList.toggle('active', wide);
+    wideBtn.disabled = mode !== 'read';
   }
 
-  applyReadState();
+  applyViewState();
 
-  viewBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      readState = Number(btn.dataset.state);
-      applyReadState();
-      localStorage.setItem(STORAGE_READ_KEY, readState);
-    });
+  editBtn.addEventListener('click', () => {
+    mode = 'edit';
+    applyViewState();
+    localStorage.setItem(STORAGE_MODE_KEY, mode);
+  });
+
+  readBtn.addEventListener('click', () => {
+    mode = 'read';
+    applyViewState();
+    localStorage.setItem(STORAGE_MODE_KEY, mode);
+  });
+
+  wideBtn.addEventListener('click', () => {
+    wide = !wide;
+    applyViewState();
+    localStorage.setItem(STORAGE_WIDE_KEY, wide ? '1' : '0');
   });
 
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -557,9 +571,9 @@
   clearBtn.addEventListener('click', () => {
     inputEl.value = '';
     localStorage.removeItem(STORAGE_KEY);
-    readState = 0;
-    applyReadState();
-    localStorage.setItem(STORAGE_READ_KEY, 0);
+    mode = 'edit';
+    applyViewState();
+    localStorage.setItem(STORAGE_MODE_KEY, mode);
     fileHandle = null;
     reloadBtn.hidden = true;
     update();
