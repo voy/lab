@@ -9,7 +9,7 @@ Usage:
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.request import urlopen, Request
 
@@ -75,3 +75,79 @@ def tg(msg: str) -> None:
         )
     except Exception as e:
         log(f"Telegram error: {e}")
+
+
+def _iso_utc(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _parse_iso(s: str) -> datetime:
+    return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+
+
+def _birthdate_iso(birth_date_str: str) -> str:
+    year, month, day = (int(x) for x in birth_date_str.split("-"))
+    return _iso_utc(datetime(year, month, day, tzinfo=timezone.utc))
+
+
+def build_reserve_payload(opening: dict) -> dict:
+    duration = opening.get("duration", DURATION_MINUTES)
+    expiry = datetime.now(timezone.utc) + timedelta(seconds=RESERVATION_SECONDS)
+    return {
+        "instance": INSTANCE_ID,
+        "terminSucheIdent": TERMIN_SUCHE_IDENT,
+        "dateAppointment": opening["date"],
+        "duration": duration,
+        "dateExpiry": _iso_utc(expiry),
+        "doctorIds": [kd["kid"] for kd in opening["kdSet"]],
+    }
+
+
+def build_book_payload(opening: dict, reservation_id: str) -> dict:
+    duration = opening.get("duration", DURATION_MINUTES)
+    start = opening["date"]
+    end = _iso_utc(_parse_iso(start) + timedelta(minutes=duration))
+    return {
+        "otkAppointment": {
+            "instance": INSTANCE_ID,
+            "eventType": "OtkAppointment",
+            "terminSucheIdent": TERMIN_SUCHE_IDENT,
+            "start": start,
+            "end": end,
+            "kdSet": opening["kdSet"],
+            "accessCode": None,
+            "strategy": "autoconfirm",
+            "patientData": {
+                "personal": {
+                    "fname": CONFIG["FIRST_NAME"],
+                    "lname": CONFIG["LAST_NAME"],
+                    "email": CONFIG["EMAIL"],
+                    "emailCC": "",
+                    "birthdate": _birthdate_iso(CONFIG["BIRTH_DATE"]),
+                    "preferredLocale": "de",
+                    "gender": CONFIG["GENDER"],
+                    "info": "",
+                    "phone": CONFIG["PHONE"],
+                    "street": "",
+                    "streetNumber": "",
+                    "zip": "",
+                    "city": "",
+                    "countryCode": "",
+                    "customerId": "",
+                },
+                "insurance": {"type": "gkv", "name": CONFIG.get("INSURANCE_NAME", "")},
+                "customFieldResponses": [],
+                "checkboxResponses": [],
+            },
+            "isPrimary": True,
+            "bookedOver": "a-d",
+            "referringDoctor": None,
+            "reservationId": reservation_id,
+            "schemaVersion": SCHEMA_VERSION,
+            "displayStringNames": opening.get("displayStringNames", ""),
+            "name": APPOINTMENT_NAME,
+            "description": APPOINTMENT_DESCRIPTION,
+            "dialect": "behandler",
+        },
+        "otkAttachments": None,
+    }
