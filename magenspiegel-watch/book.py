@@ -204,6 +204,22 @@ def log_event(entry: dict) -> None:
     log(json.dumps(entry))
 
 
+_PII_KEYS = {
+    "patientData", "personal", "insurance",
+    "fname", "lname", "email", "emailCC", "phone", "birthdate", "customerId",
+    "insuranceName", "insuranceNumber", "street", "streetNumber", "zip", "city",
+}
+
+
+def _redact(obj):
+    """Strip known PII-bearing keys before anything touches stdout/Telegram — this repo is public."""
+    if isinstance(obj, dict):
+        return {k: ("[redacted]" if k in _PII_KEYS else _redact(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact(v) for v in obj]
+    return obj
+
+
 def _mark_github_output(key: str, value: str) -> None:
     output_path = os.environ.get("GITHUB_OUTPUT")
     if not output_path:
@@ -249,13 +265,13 @@ def _attempt_booking(opening: dict) -> None:
             "type": "book_attempt",
             "opening": opening,
             "reservationId": reservation["_id"],
-            "response": response,
+            "response": _redact(response),
             "success": bool(appointment),
         })
 
         if not appointment:
             cancel_reservation(reservation["_id"])
-            tg(f"❌ Booking rejected for {opening['date']}: {response}")
+            tg(f"❌ Booking rejected for {opening['date']}: {_redact(response)}")
             return
 
         _mark_github_output("booked", "true")
@@ -283,6 +299,9 @@ def cmd_debug() -> None:
 
 
 def cmd_dry_run() -> None:
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print("❌ Refusing to run dry-run inside GitHub Actions — it prints real patient PII to stdout and this repo is public. Run it locally instead.")
+        return
     try:
         openings = fetch_openings()
     except Exception as e:

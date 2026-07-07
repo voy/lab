@@ -10,7 +10,10 @@ on:
         required: false
         default: 'check'
         type: choice
-        options: [check, debug, dry-run]
+        options: [check, debug]
+        # dry-run intentionally excluded: it prints the real patient payload
+        # (name, DOB, phone, email) to stdout for local sanity-checking, and
+        # this repo is public — that must never run inside Actions.
 
 jobs:
   check:

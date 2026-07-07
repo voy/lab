@@ -232,6 +232,65 @@ class TestCmdCheck(unittest.TestCase):
         messages = [c.args[0] for c in self.mock_tg.call_args_list]
         self.assertTrue(any("taken" in m for m in messages))
 
+    def test_successful_booking_redacts_patient_data_from_log(self):
+        # Real bookings likely echo the submitted patientData back in the response
+        # (typical create-and-return-resource pattern) — this must never reach the
+        # (public) Actions log or a Telegram message verbatim.
+        leaky_response = {
+            "appointment": {
+                "_id": "appt-1",
+                "patientData": {
+                    "personal": {"fname": "Erika", "lname": "Musterfrau", "email": "erika@example.com"},
+                    "insurance": {"type": "gkv", "name": "Techniker Krankenkasse"},
+                },
+            }
+        }
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot", return_value={"_id": "res-1"}), \
+             patch("book.book_slot", return_value=leaky_response), \
+             patch("book.cancel_reservation") as mock_cancel:
+            book.cmd_check()
+        mock_cancel.assert_not_called()
+        messages = [c.args[0] for c in self.mock_tg.call_args_list]
+        self.assertTrue(any("Booked" in m for m in messages))
+        for m in messages:
+            self.assertNotIn("Erika", m)
+            self.assertNotIn("erika@example.com", m)
+            self.assertNotIn("Techniker Krankenkasse", m)
+        for call in self.mock_log_event.call_args_list:
+            logged = json.dumps(call.args[0])
+            self.assertNotIn("Erika", logged)
+            self.assertNotIn("erika@example.com", logged)
+            self.assertNotIn("Techniker Krankenkasse", logged)
+
+    def test_booking_rejected_redacts_patient_data_from_telegram_and_log(self):
+        leaky_response = {
+            "status": 400,
+            "error": "insurance.number required",
+            "patientData": {
+                "personal": {"fname": "Erika", "lname": "Musterfrau", "email": "erika@example.com"},
+                "insurance": {"type": "gkv", "name": "Techniker Krankenkasse"},
+            },
+        }
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot", return_value={"_id": "res-1"}), \
+             patch("book.book_slot", return_value=leaky_response), \
+             patch("book.cancel_reservation"):
+            book.cmd_check()
+        messages = [c.args[0] for c in self.mock_tg.call_args_list]
+        self.assertTrue(any("rejected" in m for m in messages))
+        for m in messages:
+            self.assertNotIn("Erika", m)
+            self.assertNotIn("Musterfrau", m)
+            self.assertNotIn("erika@example.com", m)
+            self.assertNotIn("Techniker Krankenkasse", m)
+        for call in self.mock_log_event.call_args_list:
+            logged = json.dumps(call.args[0])
+            self.assertNotIn("Erika", logged)
+            self.assertNotIn("Musterfrau", logged)
+            self.assertNotIn("erika@example.com", logged)
+            self.assertNotIn("Techniker Krankenkasse", logged)
+
     def test_booking_rejected_cancels_reservation_and_reports(self):
         with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
              patch("book.reserve_slot", return_value={"_id": "res-1"}), \
@@ -289,6 +348,17 @@ class TestCmdDryRun(unittest.TestCase):
             "GENDER": "F",
             "INSURANCE_NAME": "",
         }
+
+    def test_dry_run_refuses_to_run_inside_github_actions(self):
+        # dry-run prints real patient PII to stdout by design; this repo is
+        # public, so it must hard-refuse if it ever ends up running in CI,
+        # regardless of what the workflow YAML currently allows.
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+             patch("book.fetch_openings") as mock_fetch, \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_dry_run()
+        mock_fetch.assert_not_called()
+        self.assertIn("refus", out.getvalue().lower())
 
     def test_dry_run_reports_no_openings(self):
         with patch("book.fetch_openings", return_value=[]), \
