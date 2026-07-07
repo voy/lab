@@ -1,0 +1,11 @@
+{
+  "FIRST_NAME": "Max",
+  "LAST_NAME": "Mustermann",
+  "BIRTH_DATE": "1990-01-01",
+  "PHONE": "+49 30 1234567",
+  "EMAIL": "you@example.com",
+  "GENDER": "M",
+  "INSURANCE_NAME": "",
+  "TELEGRAM_TOKEN": "your-bot-token-from-BotFather",
+  "TELEGRAM_CHAT_ID": "your-chat-id"
+}
