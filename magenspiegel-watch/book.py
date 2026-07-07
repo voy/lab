@@ -3,8 +3,9 @@
 MVZ Gastroenterologie Friedrichshain and auto-books the first one found.
 
 Usage:
-  python3 book.py check   # poll + book if open (cron mode, default)
-  python3 book.py debug   # print current openings, no booking
+  python3 book.py check    # poll + book if open (cron mode, default)
+  python3 book.py debug    # print current openings, no booking
+  python3 book.py dry-run  # print the payloads a real opening would trigger, no network writes, no Telegram
 """
 
 import json
@@ -265,3 +266,45 @@ def _attempt_booking(opening: dict) -> None:
             cancel_reservation(reservation["_id"])
         log_event({"type": "book_error", "opening": opening, "error": str(e)})
         tg(f"❌ Booking error for {opening['date']}: {e}")
+
+
+def cmd_debug() -> None:
+    try:
+        openings = fetch_openings()
+    except Exception as e:
+        print(f"❌ {e}")
+        return
+    if not openings:
+        print("No openings currently available.")
+        return
+    print(f"{len(openings)} opening(s):")
+    for o in openings[:10]:
+        print(f"  {o['date']} ({o.get('displayStringTime', '?')})")
+
+
+def cmd_dry_run() -> None:
+    try:
+        openings = fetch_openings()
+    except Exception as e:
+        print(f"❌ Opening-check failed: {e}")
+        return
+    if not openings:
+        print("No openings.")
+        return
+
+    opening = openings[0]
+    print(f"Found {len(openings)} opening(s). Would act on: {opening['date']}")
+    print("Reserve payload that would be sent (no network write made):")
+    print(json.dumps(build_reserve_payload(opening), indent=2))
+    print("Book payload that would be sent (placeholder reservationId; no network write made, no Telegram message sent):")
+    print(json.dumps(build_book_payload(opening, "DRY-RUN-RESERVATION-ID"), indent=2))
+
+
+COMMANDS = {"check": cmd_check, "debug": cmd_debug, "dry-run": cmd_dry_run}
+
+if __name__ == "__main__":
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
+    if cmd not in COMMANDS:
+        print(f"Usage: book.py [{'|'.join(COMMANDS)}]", file=sys.stderr)
+        sys.exit(1)
+    COMMANDS[cmd]()

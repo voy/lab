@@ -255,5 +255,74 @@ class TestCmdCheck(unittest.TestCase):
         self.assertTrue(any("boom" in m for m in messages))
 
 
+import io
+
+
+class TestCmdDebug(unittest.TestCase):
+    def test_debug_prints_no_openings_message(self):
+        with patch("book.fetch_openings", return_value=[]), \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_debug()
+        self.assertIn("No openings", out.getvalue())
+
+    def test_debug_prints_opening_dates(self):
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_debug()
+        self.assertIn(SAMPLE_OPENING["date"], out.getvalue())
+
+    def test_debug_reports_fetch_errors(self):
+        with patch("book.fetch_openings", side_effect=Exception("timeout")), \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_debug()
+        self.assertIn("timeout", out.getvalue())
+
+
+class TestCmdDryRun(unittest.TestCase):
+    def setUp(self):
+        book.CONFIG = {
+            "FIRST_NAME": "Erika",
+            "LAST_NAME": "Musterfrau",
+            "BIRTH_DATE": "1990-05-17",
+            "PHONE": "+49 30 1234567",
+            "EMAIL": "erika@example.com",
+            "GENDER": "F",
+            "INSURANCE_NAME": "",
+        }
+
+    def test_dry_run_reports_no_openings(self):
+        with patch("book.fetch_openings", return_value=[]), \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_dry_run()
+        self.assertIn("No openings", out.getvalue())
+
+    def test_dry_run_prints_payloads_without_network_writes_or_telegram(self):
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot") as mock_reserve, \
+             patch("book.book_slot") as mock_book, \
+             patch("book.tg") as mock_tg, \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_dry_run()
+        mock_reserve.assert_not_called()
+        mock_book.assert_not_called()
+        mock_tg.assert_not_called()
+        output = out.getvalue()
+        self.assertIn(book.TERMIN_SUCHE_IDENT, output)
+        self.assertIn("DRY-RUN-RESERVATION-ID", output)
+
+    def test_dry_run_reports_fetch_errors(self):
+        with patch("book.fetch_openings", side_effect=Exception("timeout")), \
+             patch("sys.stdout", new_callable=io.StringIO) as out:
+            book.cmd_dry_run()
+        self.assertIn("timeout", out.getvalue())
+
+
+class TestCommandDispatch(unittest.TestCase):
+    def test_commands_map_to_expected_functions(self):
+        self.assertEqual(book.COMMANDS["check"], book.cmd_check)
+        self.assertEqual(book.COMMANDS["debug"], book.cmd_debug)
+        self.assertEqual(book.COMMANDS["dry-run"], book.cmd_dry_run)
+
+
 if __name__ == "__main__":
     unittest.main()
