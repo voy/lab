@@ -196,3 +196,7 @@ def cancel_reservation(reservation_id: str) -> None:
         _api_post("/api/reservation/cancel", {"instance": INSTANCE_ID, "reservationId": reservation_id})
     except Exception as e:
         log(f"Reservation cancel failed (ignoring): {e}")
+
+
+def log_event(entry: dict) -> None:
+    log(json.dumps(entry))

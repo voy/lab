@@ -163,5 +163,14 @@ class TestHttpWrappers(unittest.TestCase):
             book.cancel_reservation("res-1")  # must not raise
 
 
+class TestEventLog(unittest.TestCase):
+    def test_log_event_prints_json_line(self):
+        with patch("builtins.print") as mock_print:
+            book.log_event({"type": "detection", "n": 1})
+        printed = mock_print.call_args[0][0]
+        self.assertIn('"type": "detection"', printed)
+        self.assertIn('"n": 1', printed)
+
+
 if __name__ == "__main__":
     unittest.main()
