@@ -94,5 +94,74 @@ class TestPayloadBuilders(unittest.TestCase):
         self.assertEqual(payload["otkAttachments"], None)
 
 
+def _fake_response(body: dict):
+    resp = MagicMock()
+    resp.__enter__.return_value = resp
+    resp.read.return_value = json.dumps(body).encode()
+    return resp
+
+
+class TestHttpWrappers(unittest.TestCase):
+    def setUp(self):
+        book.CONFIG = {
+            "FIRST_NAME": "Erika",
+            "LAST_NAME": "Musterfrau",
+            "BIRTH_DATE": "1990-05-17",
+            "PHONE": "+49 30 1234567",
+            "EMAIL": "erika@example.com",
+            "GENDER": "F",
+            "INSURANCE_NAME": "",
+        }
+
+    def test_fetch_openings_returns_list(self):
+        with patch("book.urlopen", return_value=_fake_response({"status": 200, "openings": [SAMPLE_OPENING]})) as mock_urlopen:
+            result = book.fetch_openings()
+        self.assertEqual(result, [SAMPLE_OPENING])
+        request = mock_urlopen.call_args[0][0]
+        url = request if isinstance(request, str) else request.full_url
+        self.assertIn("/api/opening", url)
+        self.assertIn(f"terminSucheIdent={book.TERMIN_SUCHE_IDENT}", url)
+
+    def test_fetch_openings_returns_empty_list_when_no_openings_key(self):
+        with patch("book.urlopen", return_value=_fake_response({"status": 200})):
+            result = book.fetch_openings()
+        self.assertEqual(result, [])
+
+    def test_reserve_slot_returns_reservation_on_success(self):
+        with patch("book.urlopen", return_value=_fake_response({"reservation": {"_id": "res-1"}})) as mock_urlopen:
+            result = book.reserve_slot(SAMPLE_OPENING)
+        self.assertEqual(result, {"_id": "res-1"})
+        request = mock_urlopen.call_args[0][0]
+        self.assertIn("/api/reservation/reserve", request.full_url)
+        body = json.loads(request.data)
+        self.assertEqual(body["instance"], book.INSTANCE_ID)
+
+    def test_reserve_slot_returns_none_when_slot_taken(self):
+        with patch("book.urlopen", return_value=_fake_response({"reservation": None})):
+            result = book.reserve_slot(SAMPLE_OPENING)
+        self.assertIsNone(result)
+
+    def test_book_slot_posts_and_returns_response(self):
+        with patch("book.urlopen", return_value=_fake_response({"appointment": {"_id": "appt-1"}})) as mock_urlopen:
+            result = book.book_slot(SAMPLE_OPENING, "res-1")
+        self.assertEqual(result, {"appointment": {"_id": "appt-1"}})
+        request = mock_urlopen.call_args[0][0]
+        self.assertIn("/api/appointment/book", request.full_url)
+        body = json.loads(request.data)
+        self.assertEqual(body["otkAppointment"]["reservationId"], "res-1")
+
+    def test_cancel_reservation_posts_expected_body(self):
+        with patch("book.urlopen", return_value=_fake_response({"status": 200})) as mock_urlopen:
+            book.cancel_reservation("res-1")
+        request = mock_urlopen.call_args[0][0]
+        self.assertIn("/api/reservation/cancel", request.full_url)
+        body = json.loads(request.data)
+        self.assertEqual(body, {"instance": book.INSTANCE_ID, "reservationId": "res-1"})
+
+    def test_cancel_reservation_swallows_errors(self):
+        with patch("book.urlopen", side_effect=Exception("network down")):
+            book.cancel_reservation("res-1")  # must not raise
+
+
 if __name__ == "__main__":
     unittest.main()

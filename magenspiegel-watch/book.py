@@ -11,6 +11,7 @@ import json
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 from urllib.request import urlopen, Request
 
 SCRIPT_DIR = Path(__file__).parent
@@ -151,3 +152,47 @@ def build_book_payload(opening: dict, reservation_id: str) -> dict:
         },
         "otkAttachments": None,
     }
+
+
+def _api_get(path: str, params: dict) -> dict:
+    query = urlencode(params)
+    with urlopen(f"{API_BASE}{path}?{query}", timeout=15) as r:
+        return json.loads(r.read())
+
+
+def _api_post(path: str, body: dict) -> dict:
+    data = json.dumps(body).encode()
+    req = Request(
+        f"{API_BASE}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def fetch_openings() -> list:
+    data = _api_get("/api/opening", {
+        "localityIds": "",
+        "instance": INSTANCE_ID,
+        "terminSucheIdent": TERMIN_SUCHE_IDENT,
+        "forerunTime": 0,
+    })
+    return data.get("openings") or []
+
+
+def reserve_slot(opening: dict):
+    data = _api_post("/api/reservation/reserve", build_reserve_payload(opening))
+    return data.get("reservation")
+
+
+def book_slot(opening: dict, reservation_id: str) -> dict:
+    return _api_post("/api/appointment/book", build_book_payload(opening, reservation_id))
+
+
+def cancel_reservation(reservation_id: str) -> None:
+    try:
+        _api_post("/api/reservation/cancel", {"instance": INSTANCE_ID, "reservationId": reservation_id})
+    except Exception as e:
+        log(f"Reservation cancel failed (ignoring): {e}")
