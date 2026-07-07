@@ -172,5 +172,88 @@ class TestEventLog(unittest.TestCase):
         self.assertIn('"n": 1', printed)
 
 
+import os
+import tempfile
+
+
+class TestMarkGithubOutput(unittest.TestCase):
+    def test_noop_when_github_output_env_not_set(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GITHUB_OUTPUT", None)
+            book._mark_github_output("booked", "true")  # must not raise
+
+    def test_writes_key_value_line_when_github_output_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = Path(tmp) / "output.txt"
+            with patch.dict(os.environ, {"GITHUB_OUTPUT": str(output_path)}):
+                book._mark_github_output("booked", "true")
+            self.assertEqual(output_path.read_text(), "booked=true\n")
+
+
+class TestCmdCheck(unittest.TestCase):
+    def setUp(self):
+        patcher_tg = patch("book.tg")
+        patcher_log = patch("book.log_event")
+        self.mock_tg = patcher_tg.start()
+        self.mock_log_event = patcher_log.start()
+        self.addCleanup(patcher_tg.stop)
+        self.addCleanup(patcher_log.stop)
+
+    def test_no_openings_sends_no_notification(self):
+        with patch("book.fetch_openings", return_value=[]):
+            book.cmd_check()
+        self.mock_tg.assert_not_called()
+        self.mock_log_event.assert_not_called()
+
+    def test_opening_check_failure_notifies_and_returns(self):
+        with patch("book.fetch_openings", side_effect=Exception("timeout")):
+            book.cmd_check()
+        self.mock_tg.assert_called_once()
+        self.assertIn("timeout", self.mock_tg.call_args[0][0])
+
+    def test_successful_booking_reports_success_and_signals_github_output(self):
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot", return_value={"_id": "res-1"}), \
+             patch("book.book_slot", return_value={"appointment": {"_id": "appt-1"}}), \
+             patch("book.cancel_reservation") as mock_cancel, \
+             patch("book._mark_github_output") as mock_mark:
+            book.cmd_check()
+        mock_cancel.assert_not_called()
+        mock_mark.assert_called_once_with("booked", "true")
+        messages = [c.args[0] for c in self.mock_tg.call_args_list]
+        self.assertTrue(any("Booked" in m for m in messages))
+
+    def test_reservation_lost_reports_and_does_not_book(self):
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot", return_value=None), \
+             patch("book.book_slot") as mock_book:
+            book.cmd_check()
+        mock_book.assert_not_called()
+        messages = [c.args[0] for c in self.mock_tg.call_args_list]
+        self.assertTrue(any("taken" in m for m in messages))
+
+    def test_booking_rejected_cancels_reservation_and_reports(self):
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot", return_value={"_id": "res-1"}), \
+             patch("book.book_slot", return_value={"status": 400}), \
+             patch("book.cancel_reservation") as mock_cancel, \
+             patch("book._mark_github_output") as mock_mark:
+            book.cmd_check()
+        mock_cancel.assert_called_once_with("res-1")
+        mock_mark.assert_not_called()
+        messages = [c.args[0] for c in self.mock_tg.call_args_list]
+        self.assertTrue(any("rejected" in m for m in messages))
+
+    def test_unexpected_exception_cancels_reservation_and_reports(self):
+        with patch("book.fetch_openings", return_value=[SAMPLE_OPENING]), \
+             patch("book.reserve_slot", return_value={"_id": "res-1"}), \
+             patch("book.book_slot", side_effect=Exception("boom")), \
+             patch("book.cancel_reservation") as mock_cancel:
+            book.cmd_check()
+        mock_cancel.assert_called_once_with("res-1")
+        messages = [c.args[0] for c in self.mock_tg.call_args_list]
+        self.assertTrue(any("boom" in m for m in messages))
+
+
 if __name__ == "__main__":
     unittest.main()

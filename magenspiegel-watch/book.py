@@ -8,6 +8,7 @@ Usage:
 """
 
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -200,3 +201,67 @@ def cancel_reservation(reservation_id: str) -> None:
 
 def log_event(entry: dict) -> None:
     log(json.dumps(entry))
+
+
+def _mark_github_output(key: str, value: str) -> None:
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if not output_path:
+        return
+    with open(output_path, "a") as f:
+        f.write(f"{key}={value}\n")
+
+
+def cmd_check() -> None:
+    try:
+        openings = fetch_openings()
+    except Exception as e:
+        tg(f"❌ Opening-check failed: {e}")
+        return
+
+    if not openings:
+        log("No openings.")
+        return
+
+    opening = openings[0]
+    log_event({
+        "type": "detection",
+        "detectedAt": _iso_utc(datetime.now(timezone.utc)),
+        "openingsCount": len(openings),
+        "openings": openings,
+    })
+
+    _attempt_booking(opening)
+
+
+def _attempt_booking(opening: dict) -> None:
+    reservation = None
+    try:
+        reservation = reserve_slot(opening)
+        if not reservation:
+            tg(f"⏳ Slot {opening['date']} was taken before we could reserve it.")
+            log_event({"type": "reserve_failed", "opening": opening})
+            return
+
+        response = book_slot(opening, reservation["_id"])
+        appointment = response.get("appointment") if response else None
+        log_event({
+            "type": "book_attempt",
+            "opening": opening,
+            "reservationId": reservation["_id"],
+            "response": response,
+            "success": bool(appointment),
+        })
+
+        if not appointment:
+            cancel_reservation(reservation["_id"])
+            tg(f"❌ Booking rejected for {opening['date']}: {response}")
+            return
+
+        _mark_github_output("booked", "true")
+        tg(f"✅ Booked: Magenspiegelung on {opening['date']}")
+
+    except Exception as e:
+        if reservation:
+            cancel_reservation(reservation["_id"])
+        log_event({"type": "book_error", "opening": opening, "error": str(e)})
+        tg(f"❌ Booking error for {opening['date']}: {e}")
