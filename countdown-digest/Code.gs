@@ -64,3 +64,13 @@ function breakdownSpan(start, end) {
 function pluralize(n, unit) {
   return n + ' ' + unit + (n === 1 ? '' : 's');
 }
+
+// ---- digest assembly -------------------------------------------------------
+
+function buildDigestMessage(entries, today) {
+  var lines = entries.map(function (e) {
+    return formatRow(e.label, e.date, today);
+  });
+  if (!lines.length) return null;
+  return '📅 Weekly update\n\n' + lines.join('\n');
+}
