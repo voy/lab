@@ -74,3 +74,66 @@ function buildDigestMessage(entries, today) {
   if (!lines.length) return null;
   return '📅 Weekly update\n\n' + lines.join('\n');
 }
+
+// ---- sheet reading ----------------------------------------------------------
+
+function readEntries() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var values = sheet.getDataRange().getValues();
+  var entries = [];
+  for (var i = 1; i < values.length; i++) {   // skip header row
+    var label = String(values[i][0] || '').trim();
+    var rawDate = values[i][1];
+    var date = rawDate instanceof Date ? rawDate : new Date(rawDate);
+    if (!label || isNaN(date.getTime())) {
+      Logger.log('Skipping row %s: label=%s date=%s', i + 1, label, rawDate);
+      continue;
+    }
+    entries.push({ label: label, date: date });
+  }
+  return entries;
+}
+
+// ---- entry points -------------------------------------------------------
+
+function sendWeeklyDigest() {
+  var message = buildDigestMessage(readEntries(), new Date());
+  if (!message) {
+    Logger.log('No valid rows found — nothing to send.');
+    return;
+  }
+  sendTelegram(message);
+  Logger.log('Sent digest:\n' + message);
+}
+
+// Preview the digest without sending it to Telegram.
+function debugRun() {
+  var message = buildDigestMessage(readEntries(), new Date());
+  Logger.log(message || '(no valid rows)');
+}
+
+// ---- Telegram -----------------------------------------------------------
+
+function sendTelegram(text) {
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('TELEGRAM_TOKEN');
+  var chatId = props.getProperty('TELEGRAM_CHAT_ID');
+  if (!token || !chatId) throw new Error('TELEGRAM_TOKEN / TELEGRAM_CHAT_ID not set');
+
+  var resp = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'post',
+    muteHttpExceptions: true,
+    payload: { chat_id: chatId, text: text }
+  });
+  Logger.log('Telegram sendMessage -> HTTP %s', resp.getResponseCode());
+}
+
+/** One-off helper: message your bot first, then run this and read the log for the chat id. */
+function setChatIdFromUpdates() {
+  var token = PropertiesService.getScriptProperties().getProperty('TELEGRAM_TOKEN');
+  if (!token) { Logger.log('Set TELEGRAM_TOKEN in Script Properties first.'); return; }
+  var resp = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getUpdates',
+    { muteHttpExceptions: true });
+  Logger.log(resp.getContentText());
+  Logger.log('Find "chat":{"id": <NUMBER> ...} above and save it as TELEGRAM_CHAT_ID.');
+}
