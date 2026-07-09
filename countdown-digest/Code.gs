@@ -2,19 +2,19 @@
  * Weekly countdown/countup digest (Google Apps Script).
  *
  * Reads a two-column sheet (Label, Date) and sends one weekly Telegram
- * message summarizing how long it's been since (or until) each date, e.g.
- * "1st seizure: 5 months since (150 days)".
+ * message summarizing how long it's been since (or until) each date, split
+ * into Since/Until sections, e.g.
+ * "⏳ Since\n1st seizure: 5 months since (150 days)".
  *
  * SETUP (no secrets live in this file — they go in Script Properties):
  *   1. Create a Telegram bot via @BotFather, copy its token (or reuse an
  *      existing one from another script).
- *   2. Send the bot any message, then run setChatIdFromUpdates() once and
- *      read the log.
- *   3. Project Settings -> Script Properties -> add:
- *        TELEGRAM_TOKEN   = <bot token>
- *        TELEGRAM_CHAT_ID = <chat id>
- *   4. Fill in the bound sheet's first tab with a header row (Label, Date)
+ *   2. Fill in the bound sheet's first tab with a header row (Label, Date)
  *      and one data row per countdown/countup.
+ *   3. Project Settings -> Script Properties -> add TELEGRAM_TOKEN (the
+ *      token from step 1).
+ *   4. Send the bot any message, then run setChatIdFromUpdates() and read
+ *      the log for the chat id; add it as TELEGRAM_CHAT_ID.
  *   5. Run debugRun() once manually to grant permissions and preview the
  *      message in the log without sending it.
  *   6. Triggers -> add time-driven trigger on sendWeeklyDigest, weekly,
@@ -68,11 +68,23 @@ function pluralize(n, unit) {
 // ---- digest assembly -------------------------------------------------------
 
 function buildDigestMessage(entries, today) {
-  var lines = entries.map(function (e) {
-    return formatRow(e.label, e.date, today);
-  });
-  if (!lines.length) return null;
-  return '📅 Weekly update\n\n' + lines.join('\n');
+  if (!entries.length) return null;
+
+  var since = entries.filter(function (e) { return e.date.getTime() <= today.getTime(); });
+  var until = entries.filter(function (e) { return e.date.getTime() > today.getTime(); });
+
+  since.sort(function (a, b) { return b.date.getTime() - a.date.getTime(); }); // most recent first
+  until.sort(function (a, b) { return a.date.getTime() - b.date.getTime(); }); // soonest first
+
+  var sections = [];
+  if (since.length) sections.push('⏳ Since\n' + since.map(toLine(today)).join('\n'));
+  if (until.length) sections.push('🕒 Until\n' + until.map(toLine(today)).join('\n'));
+
+  return '📅 Weekly update\n\n' + sections.join('\n\n');
+}
+
+function toLine(today) {
+  return function (e) { return formatRow(e.label, e.date, today); };
 }
 
 // ---- sheet reading ----------------------------------------------------------
