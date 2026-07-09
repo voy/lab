@@ -137,7 +137,12 @@ function sendTelegram(text) {
     muteHttpExceptions: true,
     payload: { chat_id: chatId, text: text }
   });
-  Logger.log('Telegram sendMessage -> HTTP %s', resp.getResponseCode());
+  var code = resp.getResponseCode();
+  if (code === 200) {
+    Logger.log('Telegram sendMessage -> HTTP 200');
+  } else {
+    Logger.log('Telegram sendMessage -> HTTP %s: %s', code, resp.getContentText());
+  }
 }
 
 /** One-off helper: message your bot first, then run this and read the log for the chat id. */
