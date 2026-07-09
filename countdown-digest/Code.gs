@@ -77,8 +77,8 @@ function buildDigestMessage(entries, today) {
   until.sort(function (a, b) { return a.date.getTime() - b.date.getTime(); }); // soonest first
 
   var sections = [];
-  if (since.length) sections.push('⏳ Since\n' + since.map(toLine(today)).join('\n'));
-  if (until.length) sections.push('🕒 Until\n' + until.map(toLine(today)).join('\n'));
+  if (since.length) sections.push('⏳ Since\n\n' + since.map(toLine(today)).join('\n'));
+  if (until.length) sections.push('🕒 Until\n\n' + until.map(toLine(today)).join('\n'));
 
   return '📅 Weekly update\n\n' + sections.join('\n\n');
 }
