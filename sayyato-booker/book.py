@@ -152,6 +152,18 @@ def is_bridge_day(date_str: str) -> bool:
     return False
 
 
+def skip_reason(date_str: str, skip_dates: list) -> Optional[tuple]:
+    """Single source of truth for "should we NOT book this date". Returns
+    (emoji, label) when the date must be skipped, else None. Both the
+    same-day and DAYS_AHEAD booking paths go through this so they can't
+    diverge."""
+    if date_str in skip_dates:       return ("⏭️", "in skip list")
+    if is_public_holiday(date_str):  return ("⛔", "public holiday")
+    if is_schulferien(date_str):     return ("🏖️", "Schulferien")
+    if is_bridge_day(date_str):      return ("🌉", "bridge day")
+    return None
+
+
 def week_bounds(target: date):
     mon = target - timedelta(days=target.weekday())
     sun = mon - timedelta(days=1)
@@ -270,14 +282,15 @@ def book_slot(page, token: str, uid: str, slot: dict):
 
 
 
-def slot_status(slot: dict) -> str:
+def slot_status(slot: dict, will_skip: bool = False) -> str:
     if is_booked(slot):
         return "✅ booked"
     if slot.get("NichtBuchbar"):
         reason = slot.get("NichtBuchbarGrund") or "not bookable"
         return f"🔒 {reason}"
     free = slot.get("FreiePlaetze", "?")
-    return f"🟢 available ({free} free)"
+    dot  = "🔴" if will_skip else "🟢"
+    return f"{dot} available ({free} free)"
 
 
 def upcoming_summary(page, skip_dates: list, n: int = 5) -> str:
@@ -302,13 +315,9 @@ def upcoming_summary(page, skip_dates: list, n: int = 5) -> str:
         slot = find_slot(slots_cache[week_key], course["name"], target_str)
         if slot:
             n_no_slot = 0
-            tags = []
-            if target_str in skip_dates:       tags.append("skip")
-            if is_public_holiday(target_str):  tags.append("holiday")
-            if is_schulferien(target_str):     tags.append("Ferien")
-            if is_bridge_day(target_str):      tags.append("Brückentag")
-            suffix = f" ({', '.join(tags)})" if tags else ""
-            lines.append(f"  {target_str} {course['name']}: {slot_status(slot)}{suffix}")
+            skip   = skip_reason(target_str, skip_dates)
+            suffix = f" ({skip[1]})" if skip else ""
+            lines.append(f"  {target_str} {course['name']}: {slot_status(slot, will_skip=bool(skip))}{suffix}")
             count += 1
             if count >= n:
                 break
@@ -345,7 +354,7 @@ def cmd_book():
             token, uid = login(page)
 
             # Confirm (or last-minute book) today's class via a definitive booking attempt
-            if today_course and today_str not in skip_dates:
+            if today_course and not skip_reason(today_str, skip_dates):
                 today_slots = get_week_slots(page, today)
                 today_slot  = find_slot(today_slots, today_course["name"], today_str)
                 if today_slot:
@@ -367,17 +376,10 @@ def cmd_book():
 
             log(f"Target: {target} — {target_course['name']}")
 
-            if target_str in skip_dates:
-                tg(f"⏭️ Skipping {target_course['name']} on {target} — in skip list" + summary)
-                return
-            if is_public_holiday(target_str):
-                tg(f"⛔ Skipping {target_course['name']} on {target} — public holiday" + summary)
-                return
-            if is_schulferien(target_str):
-                tg(f"🏖️ Skipping {target_course['name']} on {target} — Schulferien" + summary)
-                return
-            if is_bridge_day(target_str):
-                tg(f"🌉 Skipping {target_course['name']} on {target} — bridge day" + summary)
+            skip = skip_reason(target_str, skip_dates)
+            if skip:
+                emoji, label = skip
+                tg(f"{emoji} Skipping {target_course['name']} on {target} — {label}" + summary)
                 return
 
             slots = get_week_slots(page, target)
@@ -506,14 +508,9 @@ def cmd_debug():
                 slot = find_slot(slots_cache[week_key], course["name"], target_str)
                 if slot:
                     n_no_slot = 0
-                    status = slot_status(slot)
-                    tags = []
-                    if target_str in skip_dates:        tags.append("skip")
-                    if is_public_holiday(target_str):   tags.append("holiday")
-                    if is_schulferien(target_str):      tags.append("Ferien")
-                    if is_bridge_day(target_str):       tags.append("Brückentag")
-                    suffix = f" ({', '.join(tags)})" if tags else ""
-                    lines.append(f"  {target_str} {course['name']}: {status}{suffix}")
+                    skip   = skip_reason(target_str, skip_dates)
+                    suffix = f" ({skip[1]})" if skip else ""
+                    lines.append(f"  {target_str} {course['name']}: {slot_status(slot, will_skip=bool(skip))}{suffix}")
                 else:
                     n_no_slot += 1
                     if n_no_slot <= 2:
@@ -587,14 +584,9 @@ def cmd_book_all():
                 if week_key not in slots_cache:
                     slots_cache[week_key] = get_week_slots(page, target)
 
-                if target_str in skip_dates:
-                    log(f"  {target_str} — in skip list"); n_skipped += 1; continue
-                if is_public_holiday(target_str):
-                    log(f"  {target_str} — public holiday"); n_skipped += 1; continue
-                if is_schulferien(target_str):
-                    log(f"  {target_str} — Schulferien"); n_skipped += 1; continue
-                if is_bridge_day(target_str):
-                    log(f"  {target_str} — bridge day"); n_skipped += 1; continue
+                skip = skip_reason(target_str, skip_dates)
+                if skip:
+                    log(f"  {target_str} — {skip[1]}"); n_skipped += 1; continue
 
                 slot = find_slot(slots_cache[week_key], course["name"], target_str)
                 if not slot:
