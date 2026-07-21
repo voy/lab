@@ -229,6 +229,7 @@ def _mark_github_output(key: str, value: str) -> None:
 
 
 def cmd_check() -> None:
+    log("Polling arzt-direkt for Magenspiegelung openings…")
     try:
         openings = fetch_openings()
     except Exception as e:
@@ -236,8 +237,10 @@ def cmd_check() -> None:
         return
 
     if not openings:
-        log("No openings.")
+        log("Checked — 0 openings available. Nothing to book.")
         return
+
+    log(f"Checked — {len(openings)} opening(s) available; attempting to book the first.")
 
     opening = openings[0]
     log_event({
