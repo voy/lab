@@ -1,0 +1,9 @@
+.jira-key-link,
+.jira-key-link:visited {
+  color: #0c66e4;
+  text-decoration: none;
+}
+
+.jira-key-link:hover {
+  text-decoration: underline;
+}
