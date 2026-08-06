@@ -1,5 +1,7 @@
 # Schildkröte Berlin - Mealplan Side by Side
 
+**Deprecated** — no longer in use, kept for reference only.
+
 A Tampermonkey/Greasemonkey userscript that displays the mealplan panels on [bestellung.schildkroete-berlin.de](https://bestellung.schildkroete-berlin.de) side by side instead of stacked vertically.
 
 ## Installation

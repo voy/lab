@@ -1,5 +1,7 @@
 # MarSei Ceramics restock monitor
 
+**Deprecated** — no longer in use, kept for reference only.
+
 Cups on [marseiceramics.cz](https://marseiceramics.cz) sell out within seconds of a drop.
 This monitor watches the **Kalíšky cappuccino** and **Kalíšky latté** categories and sends
 a **Telegram** push notification the moment anything becomes purchasable — so you can open

@@ -1,5 +1,7 @@
 # boxcrop
 
+**Deprecated** — experiment, never really used.
+
 A minimal browser tool for cropping images to a specific output resolution.
 
 Drop an image, position and resize the crop box, hit **Crop & Download** (or **Enter**) to get a PNG at your target size. If the selection is smaller than the output resolution, it gets upscaled.
