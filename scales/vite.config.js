@@ -1,12 +1,19 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const demodule = {
+  name: 'demodule',
+  transformIndexHtml: (html) =>
+    html.replace(/<script type="module" crossorigin/g, '<script defer'),
+}
+
 export default defineConfig({
-  plugins: [react()],
+  base: './',
+  plugins: [react(), demodule],
   build: {
     rollupOptions: {
       output: {
-        manualChunks: undefined,
+        format: 'iife',
         inlineDynamicImports: true,
       },
     },
