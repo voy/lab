@@ -4,14 +4,10 @@ Watches a password-protected [TaskCards](https://www.taskcards.de) pinboard and
 tells you what the teacher changed — a 2–4 sentence German summary written by
 Claude, plus the list of affected cards. Silent when nothing changed.
 
-Two variants sharing the same logic:
-
-- **`Code.gs`** — Google Apps Script (the deployed one). Runs on a time
-  trigger, emails a parent list via `MailApp`, stores the previous snapshot as
-  a JSON file in Drive (Drive revisions = free history), secrets in Script
-  Properties. No server, no build step.
-- **`check.mjs`** — local Node variant. macOS notification instead of email,
-  snapshot in `~/.config/pinwand-patrol/`, secrets in the macOS Keychain.
+A single Google Apps Script (`Code.gs`): runs on a time trigger, emails a
+parent list via `MailApp`, stores the previous snapshot as a JSON file in
+Drive (Drive revisions = free history), secrets in Script Properties. No
+server, no build step.
 
 ## How it works
 
@@ -60,15 +56,3 @@ leak to parents on a later run.
    "immediately" so you hear about breakage (e.g. a rotated board password).
 
 The script manages `VISITOR_TOKEN` and `SNAPSHOT_FILE_ID` properties itself.
-
-## Local Node variant
-
-```sh
-npm install
-security add-generic-password -s pinwand-patrol -a taskcards -w    # board password
-security add-generic-password -s pinwand-patrol -a anthropic -w    # Anthropic API key (optional)
-node check.mjs   # first run creates ~/.config/pinwand-patrol/config.json — fill in the two UUIDs
-```
-
-First run stores a baseline; later runs print/notify a summary on changes and
-archive the old snapshot under `~/.config/pinwand-patrol/history/`.
