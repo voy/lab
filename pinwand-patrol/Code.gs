@@ -7,7 +7,8 @@
 //   BOARD_ID           board UUID from the share link
 //   SHARE_TOKEN        token UUID from the share link
 //   BOARD_PASSWORD     the board password
-//   EMAIL_TO           comma-separated recipient list
+//   EMAIL_TO           comma-separated recipient list (the parents)
+//   EMAIL_ADMIN        optional — ops emails + testRun() recipient; defaults to the script owner
 //   ANTHROPIC_API_KEY  optional — without it, emails contain plain change counts
 //
 // Managed by the script itself: VISITOR_TOKEN, SNAPSHOT_FILE_ID.
@@ -15,14 +16,33 @@
 const BASE = "https://www.taskcards.de";
 const PROPS = PropertiesService.getScriptProperties();
 
-// Trigger entry point (time-driven).
+// Trigger entry point (time-driven). Failures are emailed to the admin only.
 function checkBoard() {
-  run_(true);
+  try {
+    run_(true);
+  } catch (e) {
+    notifyAdmin_("Fehler: " + e.message, (e.stack || String(e)) + "\n\nSee the Executions panel for the full log.");
+    throw e; // keep the execution marked as failed
+  }
+}
+
+// Ops emails go to EMAIL_ADMIN (defaults to the script owner), never to parents.
+function notifyAdmin_(subject, body) {
+  const admin = PROPS.getProperty("EMAIL_ADMIN") || Session.getEffectiveUser().getEmail();
+  MailApp.sendEmail({ to: admin, subject: "pinwand-patrol ops — " + subject, body: body });
 }
 
 // Manual run: logs the email instead of sending it.
 function debugRun() {
   run_(false);
+}
+
+// Full E2E test for the admin only: simulates realistic changes, then runs
+// the real pipeline (diff → Claude → email) but delivers solely to
+// EMAIL_ADMIN. Parents never see test runs. State self-heals after the run.
+function testRun() {
+  simulateChanges();
+  run_(true, PROPS.getProperty("EMAIL_ADMIN") || Session.getEffectiveUser().getEmail());
 }
 
 // One-shot E2E test helper: rewinds the stored snapshot so the next run sees
@@ -87,7 +107,7 @@ function simulateChanges() {
   );
 }
 
-function run_(sendEmail) {
+function run_(sendEmail, recipientOverride) {
   const board = fetchBoard_();
   const snapshot = normalize_(board);
 
@@ -115,19 +135,54 @@ function run_(sendEmail) {
       .join(" | "),
   );
 
-  const summary = summarize_(diff) || fallbackSummary_(diff, snapshot);
+  const summary = summarize_(diff);
+
+  // Parents only ever get a real summary. If the summarizer failed, they get
+  // nothing: the admin is notified, and (on real runs) the snapshot is NOT
+  // advanced, so the next scheduled run retries the same diff.
+  if (!summary) {
+    const counts = fallbackSummary_(diff, snapshot);
+    if (recipientOverride) {
+      // Failed test run: heal the simulated state so the next real run
+      // doesn't deliver fake test changes to actual parents.
+      writeSnapshot_(snapshot);
+      notifyAdmin_(
+        "Test run: Summarizer failed",
+        counts + "\n\nState healed; run testRun() again once the API issue is resolved.",
+      );
+    } else if (sendEmail) {
+      notifyAdmin_(
+        "Summarizer failed — parents NOT emailed",
+        "Changes were detected but no summary could be generated:\n\n" + counts +
+          "\n\nThe snapshot was NOT advanced, so the next scheduled run retries the same diff. " +
+          "Check the Executions log (likely Anthropic API errors or a missing ANTHROPIC_API_KEY).",
+      );
+      Logger.log("Summarizer failed — parents not emailed; snapshot not advanced.");
+    } else {
+      Logger.log("Summarizer failed — parents would not be emailed; snapshot not advanced.\n" + counts);
+    }
+    return;
+  }
+
   const body = buildEmail_(summary, diff);
+  const html = buildHtmlEmail_(summary, diff);
   writeSnapshot_(snapshot);
 
   if (sendEmail) {
-    MailApp.sendEmail({
-      to: PROPS.getProperty("EMAIL_TO"),
-      subject: 'Pinnwand "' + snapshot.board + '": Neuigkeiten',
+    const admin = PROPS.getProperty("EMAIL_ADMIN") || Session.getEffectiveUser().getEmail();
+    // Parents go in BCC so they don't see each other's addresses.
+    const mail = {
+      to: recipientOverride || admin,
+      subject: 'Pinnwand "' + snapshot.board + '": Neuigkeiten' + (recipientOverride ? " (Test)" : ""),
       body: body,
-    });
-    Logger.log("Email sent to %s.", PROPS.getProperty("EMAIL_TO"));
+      htmlBody: html,
+    };
+    if (!recipientOverride) mail.bcc = PROPS.getProperty("EMAIL_TO");
+    MailApp.sendEmail(mail);
+    Logger.log("Email sent to %s (bcc: %s).", mail.to, mail.bcc || "—");
   } else {
     Logger.log(body);
+    Logger.log("HTML preview:\n%s", html);
   }
 }
 
@@ -288,8 +343,10 @@ const SUMMARY_PROMPT =
   "You summarize changes to a German school class pinboard (TaskCards) so parents don't have to read the board. " +
   "You receive a JSON diff with added, removed, and changed cards; changed cards carry before/after. " +
   "Descriptions may contain HTML markup — read through it, never reproduce it.\n\n" +
-  "Write in plain German, neutral and friendly, as running text for a plain-text email: " +
-  "no markdown, no greeting, no preamble. Scale length to the changes — one small change is one or " +
+  "Write in plain German, neutral and friendly, as running text for an email: " +
+  "no greeting, no preamble. You may highlight key dates, deadlines, amounts, and required actions " +
+  "by wrapping them in **double asterisks**; use no other markup of any kind. " +
+  "Scale length to the changes — one small change is one or " +
   "two sentences; several changes get a short sentence each, most actionable first.\n\n" +
   "Never omit actionable details that appear in the diff: dates, times, and deadlines; amounts of money " +
   "and payment details; things to sign, bring, buy, or return; locations; schedule changes. " +
@@ -374,8 +431,9 @@ function fallbackSummary_(diff, snapshot) {
 
 // --- Email ---
 
+// Plain-text version (fallback for clients that don't render HTML).
 function buildEmail_(summary, diff) {
-  const lines = [summary, "", "Betroffene Karten:"];
+  const lines = [summary.replace(/\*\*/g, ""), "", "Betroffene Karten:"];
   diff.added.forEach(function (c) {
     lines.push("  + " + (c.title || "(ohne Titel)") + (c.list ? " — " + c.list : ""));
   });
@@ -396,4 +454,55 @@ function buildEmail_(summary, diff) {
       "?token=" + PROPS.getProperty("SHARE_TOKEN"),
   );
   return lines.join("\n");
+}
+
+function escapeHtml_(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Escape first, then convert the model's only allowed markup (**bold**) and newlines.
+function inlineMarkup_(s) {
+  return escapeHtml_(s)
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/\n/g, "<br>");
+}
+
+function buildHtmlEmail_(summary, diff) {
+  const boardUrl =
+    BASE + "/#/board/" + PROPS.getProperty("BOARD_ID") +
+    "?token=" + PROPS.getProperty("SHARE_TOKEN");
+
+  function row(label, color, card) {
+    return (
+      '<tr><td style="padding:3px 10px 3px 0;white-space:nowrap;vertical-align:top">' +
+      '<span style="font-weight:600;color:' + color + '">' + label + "</span></td>" +
+      '<td style="padding:3px 0">' + escapeHtml_(card.title || "(ohne Titel)") +
+      (card.list ? ' <span style="color:#888">— ' + escapeHtml_(card.list) + "</span>" : "") +
+      "</td></tr>"
+    );
+  }
+
+  const rows = []
+    .concat(diff.added.map(function (c) { return row("Neu", "#2e7d32", c); }))
+    .concat(diff.changed.map(function (x) { return row("Geändert", "#b26a00", x.after); }))
+    .concat(diff.removed.map(function (c) { return row("Entfernt", "#b3261e", c); }))
+    .join("");
+
+  return (
+    '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;' +
+    'max-width:640px;color:#222;font-size:15px;line-height:1.5">' +
+    "<p>" + inlineMarkup_(summary) + "</p>" +
+    '<p style="margin-bottom:4px"><b>Betroffene Karten</b></p>' +
+    '<table style="border-collapse:collapse;font-size:14px">' + rows + "</table>" +
+    '<p><a href="' + boardUrl + '">Zur Pinnwand</a></p>' +
+    '<hr style="border:none;border-top:1px solid #ddd;margin:16px 0">' +
+    '<p style="color:#888;font-size:12px">Diese Zusammenfassung wurde automatisch von einer KI ' +
+    "erstellt und kann Fehler enthalten. Verbindlich ist allein die Pinnwand — bitte wichtige " +
+    "Termine und Angaben dort nachprüfen.</p>" +
+    "</div>"
+  );
 }
