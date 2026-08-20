@@ -137,6 +137,13 @@
       padding: 1px 8px;
     }
 
+    /* Marks a card with no link — the repo is private, so there is nothing to open. */
+    .tag-private {
+      margin-left: 6px;
+      font-weight: 400;
+      vertical-align: middle;
+    }
+
     footer {
       border-top: 1px solid var(--border);
       padding: 20px 24px;
@@ -234,6 +241,16 @@
           <span class="tag">email</span>
         </div>
       </a>
+      <div class="card">
+        <div class="card-title">muellmelder <span class="tag tag-private">private repo</span></div>
+        <div class="card-desc">Photograph illegally dumped trash and it reports itself. An iOS Shortcut pushes the photo and its coordinates into a private repo; a GitHub Action classifies the waste with Claude, drafts the German Meldung and opens a PR. Merging it files the report with the Berlin Ordnungsamt — headless Playwright drives their wizard, spoofing the browser's location so the portal geocodes the address itself. Lives outside this repo because the photos carry GPS.</div>
+        <div class="card-tags">
+          <span class="tag">ios shortcut</span>
+          <span class="tag">github actions</span>
+          <span class="tag">claude api</span>
+          <span class="tag">playwright</span>
+        </div>
+      </div>
       <a class="card" href="https://github.com/voy/lab/tree/main/kid-border-papers">
         <div class="card-title">kid-border-papers</div>
         <div class="card-desc">Interactive CLI that fills RegioJet powers of attorney for kids travelling between Berlin and Prague, from a local config — plus a German consent page for the border. One print-ready PDF.</div>
