@@ -147,6 +147,25 @@
 
     .btn-mini:hover { border-color: var(--accent); color: var(--text); }
 
+    .btn-pane {
+      background: none;
+      border: none;
+      padding: 0;
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+    }
+
+    .btn-pane:hover { color: var(--text); }
+    /* the chevron flips to point outward once the pane is hidden */
+    .btn-pane.is-hidden .chevron { transform: scaleX(-1); transform-origin: 9.6px 8px; }
+
+    .pane-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .pane-header-right {
       display: flex;
       align-items: center;
@@ -260,7 +279,6 @@
     <span>json-explorer</span>
   </div>
   <div class="header-actions">
-    <button class="btn" id="btn-editor">Hide input</button>
     <button class="btn" id="btn-copy" disabled>Copy beautified</button>
     <button class="btn" id="btn-expand">Expand all</button>
     <button class="btn" id="btn-collapse">Collapse all</button>
@@ -281,7 +299,17 @@
 
   <div class="tree-pane">
     <div class="pane-header">
-      <span>Explorer</span>
+      <span class="pane-header-left">
+        <button class="btn-pane" id="btn-editor" title="Hide input" aria-label="Hide input" aria-pressed="false">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/>
+            <path d="M6 2.75v10.5" stroke-linecap="butt"/>
+            <path class="chevron" d="M10.4 6.4 8.8 8l1.6 1.6"/>
+          </svg>
+        </button>
+        <span>Explorer</span>
+      </span>
       <span class="pane-header-right">
         <button class="btn-mini" id="btn-tree-wrap">Wrap: on</button>
         <span id="stats"></span>
@@ -311,7 +339,11 @@
 
   function setEditorVisible(visible) {
     mainEl.classList.toggle('no-editor', !visible);
-    editorBtn.textContent = visible ? 'Hide input' : 'Show input';
+    editorBtn.classList.toggle('is-hidden', !visible);
+    const label = visible ? 'Hide input' : 'Show input';
+    editorBtn.title = label;
+    editorBtn.setAttribute('aria-label', label);
+    editorBtn.setAttribute('aria-pressed', String(!visible));
     localStorage.setItem('json-explorer:editor', visible ? '1' : '0');
   }
 
