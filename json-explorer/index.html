@@ -78,6 +78,9 @@
       min-height: 0;
     }
 
+    .main.no-editor { grid-template-columns: 1fr; }
+    .main.no-editor .input-pane { display: none; }
+
     /* ── Input pane ── */
     .input-pane {
       border-right: 1px solid var(--border);
@@ -203,6 +206,7 @@
     <span>json-explorer</span>
   </div>
   <div class="header-actions">
+    <button class="btn" id="btn-editor">Hide input</button>
     <button class="btn" id="btn-copy" disabled>Copy beautified</button>
     <button class="btn" id="btn-expand">Expand all</button>
     <button class="btn" id="btn-collapse">Collapse all</button>
@@ -235,8 +239,24 @@
   const errorBar = document.getElementById('error-bar');
   const statsEl  = document.getElementById('stats');
   const copyBtn  = document.getElementById('btn-copy');
+  const mainEl   = document.querySelector('.main');
+  const editorBtn = document.getElementById('btn-editor');
 
   let lastParsed = null;
+
+  // ── Editor visibility ───────────────────────────────────────────────────────
+
+  function setEditorVisible(visible) {
+    mainEl.classList.toggle('no-editor', !visible);
+    editorBtn.textContent = visible ? 'Hide input' : 'Show input';
+    localStorage.setItem('json-explorer:editor', visible ? '1' : '0');
+  }
+
+  setEditorVisible(localStorage.getItem('json-explorer:editor') !== '0');
+
+  editorBtn.addEventListener('click', () => {
+    setEditorVisible(mainEl.classList.contains('no-editor'));
+  });
 
   // ── Parse & render ──────────────────────────────────────────────────────────
 
