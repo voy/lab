@@ -73,17 +73,31 @@
 
     .main {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      /* minmax(0,…) or the tree pane's long unwrapped rows inflate its track */
+      grid-template-columns: minmax(0, var(--input-w, 1fr)) 1px minmax(0, 1fr);
       flex: 1;
       min-height: 0;
     }
 
-    .main.no-editor { grid-template-columns: 1fr; }
-    .main.no-editor .input-pane { display: none; }
+    .main.no-editor { grid-template-columns: minmax(0, 1fr); }
+    .main.no-editor .input-pane,
+    .main.no-editor .splitter { display: none; }
+
+    .splitter {
+      background: var(--border);
+      cursor: col-resize;
+      position: relative;
+      transition: background 0.15s;
+    }
+
+    /* widen the hit area without widening the 1px line */
+    .splitter::after { content: ''; position: absolute; inset: 0 -4px; }
+    .splitter:hover, .splitter.dragging { background: var(--accent); }
+
+    .main.dragging { user-select: none; }
 
     /* ── Input pane ── */
     .input-pane {
-      border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -118,6 +132,33 @@
     }
 
     textarea::placeholder { color: #3d4451; }
+    textarea.nowrap { white-space: pre; overflow-x: auto; }
+
+    .btn-mini {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font: inherit;
+      font-size: 10px;
+      padding: 1px 6px;
+      cursor: pointer;
+    }
+
+    .btn-mini:hover { border-color: var(--accent); color: var(--text); }
+
+    .pane-header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #stats {
+      font-weight: 400;
+      font-size: 11px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
 
     .error-bar {
       display: none;
@@ -177,8 +218,21 @@
       font-size: 10px;
     }
 
-    .key   { color: var(--key); }
-    .colon { color: var(--muted); margin-right: 2px; }
+    .key   { color: var(--key); flex-shrink: 0; }
+    .colon { color: var(--muted); margin-right: 2px; flex-shrink: 0; }
+
+    /* leaf values wrap under the key; min-width lets the flex item shrink below min-content */
+    .leaf-value {
+      min-width: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .tree-scroll.nowrap .leaf-value {
+      min-width: auto;
+      white-space: pre;
+      overflow-wrap: normal;
+    }
 
     .v-str  { color: var(--str); }
     .v-num  { color: var(--num); }
@@ -217,15 +271,21 @@
   <div class="input-pane">
     <div class="pane-header">
       <span>Input</span>
+      <button class="btn-mini" id="btn-wrap">Wrap: on</button>
     </div>
     <textarea id="input" placeholder="Paste JSON here…" spellcheck="false"></textarea>
     <div class="error-bar" id="error-bar"></div>
   </div>
 
+  <div class="splitter" id="splitter" title="Drag to resize · double-click to reset"></div>
+
   <div class="tree-pane">
     <div class="pane-header">
       <span>Explorer</span>
-      <span id="stats" style="font-weight:400; text-transform:none; letter-spacing:0; font-size:11px;"></span>
+      <span class="pane-header-right">
+        <button class="btn-mini" id="btn-tree-wrap">Wrap: on</button>
+        <span id="stats"></span>
+      </span>
     </div>
     <div class="tree-scroll" id="tree">
       <div class="tree-empty">Tree will appear here</div>
@@ -239,8 +299,11 @@
   const errorBar = document.getElementById('error-bar');
   const statsEl  = document.getElementById('stats');
   const copyBtn  = document.getElementById('btn-copy');
-  const mainEl   = document.querySelector('.main');
+  const mainEl    = document.querySelector('.main');
+  const splitter  = document.getElementById('splitter');
   const editorBtn = document.getElementById('btn-editor');
+  const wrapBtn   = document.getElementById('btn-wrap');
+  const treeWrapBtn = document.getElementById('btn-tree-wrap');
 
   let lastParsed = null;
 
@@ -257,6 +320,75 @@
   editorBtn.addEventListener('click', () => {
     setEditorVisible(mainEl.classList.contains('no-editor'));
   });
+
+  // ── Soft wrap ───────────────────────────────────────────────────────────────
+
+  function wrapToggle(btn, target, key) {
+    const apply = on => {
+      target.classList.toggle('nowrap', !on);
+      btn.textContent = `Wrap: ${on ? 'on' : 'off'}`;
+      localStorage.setItem(key, on ? '1' : '0');
+    };
+    apply(localStorage.getItem(key) !== '0');
+    btn.addEventListener('click', () => apply(target.classList.contains('nowrap')));
+  }
+
+  wrapToggle(wrapBtn, inputEl, 'json-explorer:wrap');
+  wrapToggle(treeWrapBtn, treeEl, 'json-explorer:tree-wrap');
+
+  // ── Resizable split ─────────────────────────────────────────────────────────
+
+  const MIN_INPUT = 120, MIN_TREE = 200;
+
+  let splitWidth = Number(localStorage.getItem('json-explorer:split')) || null;
+
+  // clamps for the current window without touching the stored preference
+  function applySplit() {
+    const max = mainEl.clientWidth - MIN_TREE;
+    if (splitWidth === null || max < MIN_INPUT) {
+      mainEl.style.removeProperty('--input-w');
+      return;
+    }
+    mainEl.style.setProperty('--input-w', `${Math.min(Math.max(splitWidth, MIN_INPUT), max)}px`);
+  }
+
+  function setSplit(px) {
+    if (px === null) {
+      splitWidth = null;
+      localStorage.removeItem('json-explorer:split');
+    } else {
+      const max = mainEl.clientWidth - MIN_TREE;
+      if (max < MIN_INPUT) return;
+      splitWidth = Math.min(Math.max(px, MIN_INPUT), max);
+      localStorage.setItem('json-explorer:split', String(splitWidth));
+    }
+    applySplit();
+  }
+
+  applySplit();
+  window.addEventListener('resize', applySplit);
+
+  splitter.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    splitter.setPointerCapture(e.pointerId);
+    splitter.classList.add('dragging');
+    mainEl.classList.add('dragging');
+  });
+
+  splitter.addEventListener('pointermove', e => {
+    if (!splitter.classList.contains('dragging')) return;
+    setSplit(e.clientX - mainEl.getBoundingClientRect().left);
+  });
+
+  function endDrag() {
+    splitter.classList.remove('dragging');
+    mainEl.classList.remove('dragging');
+  }
+
+  splitter.addEventListener('pointerup', endDrag);
+  splitter.addEventListener('lostpointercapture', endDrag);
+
+  splitter.addEventListener('dblclick', () => setSplit(null));
 
   // ── Parse & render ──────────────────────────────────────────────────────────
 
@@ -398,6 +530,9 @@
         row.appendChild(colon);
       }
 
+      const holder = document.createElement('span');
+      holder.className = 'leaf-value';
+
       const val = document.createElement('span');
       if (value === null) {
         val.className = 'v-null';
@@ -412,15 +547,17 @@
         val.className = 'v-bool';
         val.textContent = value;
       }
-      row.appendChild(val);
+      holder.appendChild(val);
 
+      // comma lives inside the holder so it trails the last wrapped line, not the first
       if (!isLast) {
         const comma = document.createElement('span');
         comma.className = 'comma';
         comma.textContent = ',';
-        row.appendChild(comma);
+        holder.appendChild(comma);
       }
 
+      row.appendChild(holder);
       wrapper.appendChild(row);
     }
 
