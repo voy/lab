@@ -18,6 +18,29 @@
       --bool:      #ff7b72;
       --null:      #8b949e;
       --key:       #e6edf3;
+      --hover:     rgba(255, 255, 255, 0.04);
+      --guide:     #21262d;
+      --error-bg:  rgba(248, 81, 73, 0.1);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:        #ffffff;
+        --surface:   #f6f8fa;
+        --border:    #d0d7de;
+        --text:      #1f2328;
+        --muted:     #656d76;
+        --accent:    #0969da;
+        --error:     #cf222e;
+        --str:       #0a3069;
+        --num:       #953800;
+        --bool:      #cf222e;
+        --null:      #6e7781;
+        --key:       #1f2328;
+        --hover:     rgba(0, 0, 0, 0.04);
+        --guide:     #e1e6eb;
+        --error-bg:  rgba(207, 34, 46, 0.06);
+      }
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -41,11 +64,7 @@
       flex-shrink: 0;
     }
 
-    .breadcrumb {
-      font-size: 14px;
-      color: var(--muted);
-    }
-
+    .breadcrumb { font-size: 14px; color: var(--muted); }
     .breadcrumb a { color: var(--accent); text-decoration: none; }
     .breadcrumb a:hover { text-decoration: underline; }
     .breadcrumb .sep { padding: 0 4px; }
@@ -71,18 +90,38 @@
     .btn:disabled { opacity: 0.4; cursor: default; }
     .btn:disabled:hover { border-color: var(--border); color: var(--muted); }
 
+    .btn-icon {
+      background: none;
+      border: none;
+      padding: 0 4px;
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+    }
+
+    .btn-icon:hover { color: var(--text); }
+
+    /* wrap toggle swaps between the hooked-line and overflow-arrow glyphs */
+    .btn-icon .glyph-nowrap { display: none; }
+    .btn-icon.is-nowrap .glyph-wrap { display: none; }
+    .btn-icon.is-nowrap .glyph-nowrap { display: inline; }
+
+    /* ── Layout ── */
     .main {
       display: grid;
       /* minmax(0,…) or the tree pane's long unwrapped rows inflate its track */
-      grid-template-columns: minmax(0, var(--input-w, 1fr)) 1px minmax(0, 1fr);
+      grid-template-columns: minmax(0, var(--src-w, 1fr)) 1px minmax(0, 1fr);
       flex: 1;
       min-height: 0;
     }
 
-    .main.no-editor { grid-template-columns: minmax(0, 1fr); }
-    .main.no-editor .input-pane,
-    .main.no-editor .splitter { display: none; }
+    body.state-tree   .main { grid-template-columns: 1px minmax(0, 1fr); }
+    body.state-source .main { grid-template-columns: minmax(0, 1fr) 1px; }
 
+    body.state-tree   .input-pane { display: none; }
+    body.state-source .tree-pane  { display: none; }
+
+    /* ── Splitter: the only layout control ── */
     .splitter {
       background: var(--border);
       cursor: col-resize;
@@ -90,31 +129,40 @@
       transition: background 0.15s;
     }
 
-    /* widen the hit area without widening the 1px line */
-    .splitter::after { content: ''; position: absolute; inset: 0 -4px; }
-    .splitter:hover, .splitter.dragging { background: var(--accent); }
+    /* widen the hit area without widening the 1px line; when the rail is parked
+       against a window edge the slack has to go inward or it lands off-screen */
+    .splitter::after { content: ''; position: absolute; inset: 0 -5px; }
+    body.state-tree   .splitter::after { inset: 0 -16px 0 0; }
+    body.state-source .splitter::after { inset: 0 0 0 -16px; }
 
+    .splitter:hover, .splitter.dragging { background: var(--accent); }
+    /* confirms the 50/50 snap by reading as 3px without shifting the layout */
+    .splitter.dragging.centered { box-shadow: 0 0 0 1px var(--accent); }
     .main.dragging { user-select: none; }
+
+    .chev {
+      position: absolute;
+      top: 50%;
+      opacity: 0;
+      color: var(--muted);
+      pointer-events: none;
+      transition: opacity 0.15s, color 0.15s;
+      transform: translateY(-50%);
+    }
+
+    body.state-tree   .chev { left: 3px; opacity: 0.5; }
+    body.state-source .chev { right: 3px; opacity: 0.5; transform: translateY(-50%) scaleX(-1); }
+
+    /* must stay scoped to the collapsed states — unscoped, this outbids the base
+       opacity:0 and a stray chevron appears beside the divider in split view */
+    body.state-tree   .splitter:hover .chev,
+    body.state-source .splitter:hover .chev { opacity: 1; color: var(--text); }
 
     /* ── Input pane ── */
     .input-pane {
       display: flex;
       flex-direction: column;
       min-height: 0;
-    }
-
-    .pane-header {
-      padding: 8px 16px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
     }
 
     textarea {
@@ -131,37 +179,14 @@
       min-height: 0;
     }
 
-    textarea::placeholder { color: #3d4451; }
     textarea.nowrap { white-space: pre; overflow-x: auto; }
 
-    .btn-pane {
-      background: none;
-      border: none;
-      padding: 0;
-      color: var(--muted);
-      cursor: pointer;
-      display: inline-flex;
-    }
-
-    .btn-pane:hover { color: var(--text); }
-    /* the chevron flips to point outward once the pane is hidden */
-    .btn-pane.is-hidden .chevron { transform: scaleX(-1); transform-origin: 9.6px 8px; }
-
-    /* wrap toggle swaps between the hooked-line and overflow-arrow glyphs */
-    .btn-pane .glyph-nowrap { display: none; }
-    .btn-pane.is-nowrap .glyph-wrap { display: none; }
-    .btn-pane.is-nowrap .glyph-nowrap { display: inline; }
-
-    .pane-header-left {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
+    /* Spans the full width below both panes so a parse error stays visible even
+       when the input pane is collapsed. */
     .error-bar {
       display: none;
-      background: rgba(248, 81, 73, 0.1);
-      border-top: 1px solid rgba(248, 81, 73, 0.3);
+      background: var(--error-bg);
+      border-top: 1px solid var(--error);
       color: var(--error);
       font-size: 12px;
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
@@ -185,10 +210,23 @@
       min-height: 0;
     }
 
-    .tree-empty {
+    .hint {
+      display: flex;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       color: var(--muted);
       font-size: 13px;
-      padding: 4px 0;
+    }
+
+    .hint kbd {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 11px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 5px;
     }
 
     /* ── Tree nodes ── */
@@ -206,7 +244,7 @@
     }
 
     .node-row.collapsible { cursor: pointer; }
-    .node-row.collapsible:hover { background: rgba(255,255,255,0.04); }
+    .node-row.collapsible:hover { background: var(--hover); }
 
     .toggle {
       color: var(--muted);
@@ -242,7 +280,7 @@
 
     .children {
       padding-left: 20px;
-      border-left: 1px solid #21262d;
+      border-left: 1px solid var(--guide);
       margin-left: 5px;
     }
 
@@ -258,148 +296,108 @@
     <span>json-explorer</span>
   </div>
   <div class="header-actions">
-    <button class="btn" id="btn-copy" disabled>Copy beautified</button>
+    <button class="btn-icon" id="btn-wrap">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 3.5h11"/>
+        <g class="glyph-wrap">
+          <path d="M2.5 8h8.5a2.25 2.25 0 0 1 0 4.5H7"/>
+          <path d="M8.5 11 7 12.5l1.5 1.5"/>
+        </g>
+        <g class="glyph-nowrap">
+          <path d="M2.5 8h11"/>
+          <path d="M12 6.5 13.5 8 12 9.5"/>
+          <path d="M2.5 12.5h7"/>
+        </g>
+      </svg>
+    </button>
     <button class="btn" id="btn-expand">Expand all</button>
     <button class="btn" id="btn-collapse">Collapse all</button>
+    <button class="btn" id="btn-copy" title="Copy beautified JSON" disabled>Copy</button>
   </div>
 </header>
 
 <div class="main">
   <div class="input-pane">
-    <div class="pane-header">
-      <span>Input</span>
-      <button class="btn-pane" id="btn-wrap">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2.5 3.5h11"/>
-          <g class="glyph-wrap">
-            <path d="M2.5 8h8.5a2.25 2.25 0 0 1 0 4.5H7"/>
-            <path d="M8.5 11 7 12.5l1.5 1.5"/>
-          </g>
-          <g class="glyph-nowrap">
-            <path d="M2.5 8h11"/>
-            <path d="M12 6.5 13.5 8 12 9.5"/>
-            <path d="M2.5 12.5h7"/>
-          </g>
-        </svg>
-      </button>
-    </div>
-    <textarea id="input" placeholder="Paste JSON here…" spellcheck="false"></textarea>
-    <div class="error-bar" id="error-bar"></div>
+    <textarea id="input" spellcheck="false"></textarea>
   </div>
 
-  <div class="splitter" id="splitter" title="Drag to resize · double-click to reset"></div>
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="-1"
+       title="Drag to resize, snaps at 50/50 · drag into an edge to collapse a pane · double-click to reset · ⌘\ cycles">
+    <svg class="chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 2.5 7.5 6 4 9.5"/>
+    </svg>
+  </div>
 
   <div class="tree-pane">
-    <div class="pane-header">
-      <span class="pane-header-left">
-        <button class="btn-pane" id="btn-editor" title="Hide input" aria-label="Hide input" aria-pressed="false">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/>
-            <path d="M6 2.75v10.5" stroke-linecap="butt"/>
-            <path class="chevron" d="M10.4 6.4 8.8 8l1.6 1.6"/>
-          </svg>
-        </button>
-        <span>Explorer</span>
-      </span>
-      <button class="btn-pane" id="btn-tree-wrap">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2.5 3.5h11"/>
-          <g class="glyph-wrap">
-            <path d="M2.5 8h8.5a2.25 2.25 0 0 1 0 4.5H7"/>
-            <path d="M8.5 11 7 12.5l1.5 1.5"/>
-          </g>
-          <g class="glyph-nowrap">
-            <path d="M2.5 8h11"/>
-            <path d="M12 6.5 13.5 8 12 9.5"/>
-            <path d="M2.5 12.5h7"/>
-          </g>
-        </svg>
-      </button>
-    </div>
-    <div class="tree-scroll" id="tree">
-      <div class="tree-empty">Tree will appear here</div>
-    </div>
+    <div class="tree-scroll" id="tree"></div>
   </div>
 </div>
+
+<div class="error-bar" id="error-bar"></div>
 
 <script>
   const inputEl  = document.getElementById('input');
   const treeEl   = document.getElementById('tree');
   const errorBar = document.getElementById('error-bar');
   const copyBtn  = document.getElementById('btn-copy');
-  const mainEl    = document.querySelector('.main');
-  const splitter  = document.getElementById('splitter');
-  const editorBtn = document.getElementById('btn-editor');
-  const wrapBtn   = document.getElementById('btn-wrap');
-  const treeWrapBtn = document.getElementById('btn-tree-wrap');
+  const mainEl   = document.querySelector('.main');
+  const splitter = document.getElementById('splitter');
+  const wrapBtn  = document.getElementById('btn-wrap');
+
+  const KEY_STATE = 'json-explorer:state';
+  const KEY_SPLIT = 'json-explorer:split';
+  const KEY_WRAP  = 'json-explorer:wrap';
+
+  const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
+  const MOD    = IS_MAC ? '⌘' : 'Ctrl';
 
   let lastParsed = null;
 
-  // ── Editor visibility ───────────────────────────────────────────────────────
+  // ── Layout state ────────────────────────────────────────────────────────────
+  // 'split' | 'tree' (input collapsed) | 'source' (tree collapsed)
 
-  function setEditorVisible(visible) {
-    mainEl.classList.toggle('no-editor', !visible);
-    editorBtn.classList.toggle('is-hidden', !visible);
-    const label = visible ? 'Hide input' : 'Show input';
-    editorBtn.title = label;
-    editorBtn.setAttribute('aria-label', label);
-    editorBtn.setAttribute('aria-pressed', String(!visible));
-    localStorage.setItem('json-explorer:editor', visible ? '1' : '0');
+  const STATES = ['split', 'tree', 'source'];
+  let state = STATES.includes(localStorage.getItem(KEY_STATE)) ? localStorage.getItem(KEY_STATE) : 'split';
+
+  function setState(next) {
+    if (next === state) return;
+    state = next;
+    document.body.classList.remove(...STATES.map(s => `state-${s}`));
+    document.body.classList.add(`state-${state}`);
+    localStorage.setItem(KEY_STATE, state);
   }
 
-  setEditorVisible(localStorage.getItem('json-explorer:editor') !== '0');
+  document.body.classList.add(`state-${state}`);
 
-  editorBtn.addEventListener('click', () => {
-    setEditorVisible(mainEl.classList.contains('no-editor'));
-  });
+  // ── Split position ──────────────────────────────────────────────────────────
+  // The snap zone doubles as the minimum pane width: you can never drag a pane
+  // narrower than it, because crossing it collapses the pane instead.
+  const SNAP = 120;
+  // pulling the divider near the middle drops the stored width entirely, so the
+  // panes fall back to 1fr/1fr — an exact 50/50 that survives a window resize
+  const CENTER_SNAP = 28;
 
-  // ── Soft wrap ───────────────────────────────────────────────────────────────
+  let splitWidth = Number(localStorage.getItem(KEY_SPLIT)) || null;
 
-  function wrapToggle(btn, target, key) {
-    const apply = on => {
-      target.classList.toggle('nowrap', !on);
-      btn.classList.toggle('is-nowrap', !on);
-      const label = `Soft wrap: ${on ? 'on' : 'off'}`;
-      btn.title = label;
-      btn.setAttribute('aria-label', label);
-      btn.setAttribute('aria-pressed', String(on));
-      localStorage.setItem(key, on ? '1' : '0');
-    };
-    apply(localStorage.getItem(key) !== '0');
-    btn.addEventListener('click', () => apply(target.classList.contains('nowrap')));
-  }
-
-  wrapToggle(wrapBtn, inputEl, 'json-explorer:wrap');
-  wrapToggle(treeWrapBtn, treeEl, 'json-explorer:tree-wrap');
-
-  // ── Resizable split ─────────────────────────────────────────────────────────
-
-  const MIN_INPUT = 120, MIN_TREE = 200;
-
-  let splitWidth = Number(localStorage.getItem('json-explorer:split')) || null;
-
-  // clamps for the current window without touching the stored preference
+  // clamps to the current window without overwriting the stored preference
   function applySplit() {
-    const max = mainEl.clientWidth - MIN_TREE;
-    if (splitWidth === null || max < MIN_INPUT) {
-      mainEl.style.removeProperty('--input-w');
+    const max = mainEl.clientWidth - SNAP;
+    if (splitWidth === null || max < SNAP) {
+      mainEl.style.removeProperty('--src-w');
       return;
     }
-    mainEl.style.setProperty('--input-w', `${Math.min(Math.max(splitWidth, MIN_INPUT), max)}px`);
+    mainEl.style.setProperty('--src-w', `${Math.min(Math.max(splitWidth, SNAP), max)}px`);
   }
 
   function setSplit(px) {
     if (px === null) {
       splitWidth = null;
-      localStorage.removeItem('json-explorer:split');
+      localStorage.removeItem(KEY_SPLIT);
     } else {
-      const max = mainEl.clientWidth - MIN_TREE;
-      if (max < MIN_INPUT) return;
-      splitWidth = Math.min(Math.max(px, MIN_INPUT), max);
-      localStorage.setItem('json-explorer:split', String(splitWidth));
+      splitWidth = px;
+      localStorage.setItem(KEY_SPLIT, String(px));
     }
     applySplit();
   }
@@ -407,27 +405,81 @@
   applySplit();
   window.addEventListener('resize', applySplit);
 
+  // ── Drag: one gesture spans all three states ────────────────────────────────
+
+  let dragging = false, moved = false, startX = 0;
+
   splitter.addEventListener('pointerdown', e => {
     e.preventDefault();
-    splitter.setPointerCapture(e.pointerId);
+    try { splitter.setPointerCapture(e.pointerId); } catch {}
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
     splitter.classList.add('dragging');
     mainEl.classList.add('dragging');
   });
 
   splitter.addEventListener('pointermove', e => {
-    if (!splitter.classList.contains('dragging')) return;
-    setSplit(e.clientX - mainEl.getBoundingClientRect().left);
+    if (!dragging) return;
+    if (Math.abs(e.clientX - startX) > 3) moved = true;
+    if (!moved) return;
+    // absolute cursor position drives the state, so dragging back inward from a
+    // collapsed edge reopens the pane even though the rail itself has moved
+    const x = e.clientX - mainEl.getBoundingClientRect().left;
+    if (x < SNAP) {
+      setState('tree');
+      splitter.classList.remove('centered');
+    } else if (x > mainEl.clientWidth - SNAP) {
+      setState('source');
+      splitter.classList.remove('centered');
+    } else {
+      setState('split');
+      const mid = mainEl.clientWidth / 2;
+      setSplit(Math.abs(x - mid) < CENTER_SNAP ? null : x);
+      splitter.classList.toggle('centered', splitWidth === null);
+    }
   });
 
   function endDrag() {
-    splitter.classList.remove('dragging');
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging', 'centered');
     mainEl.classList.remove('dragging');
+    // a click (no drag) on a parked rail pulls the collapsed pane back out
+    if (!moved && state !== 'split') setState('split');
   }
 
   splitter.addEventListener('pointerup', endDrag);
   splitter.addEventListener('lostpointercapture', endDrag);
 
-  splitter.addEventListener('dblclick', () => setSplit(null));
+  splitter.addEventListener('dblclick', () => {
+    setState('split');
+    setSplit(null);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key !== '\\') return;
+    e.preventDefault();
+    setState(STATES[(STATES.indexOf(state) + 1) % STATES.length]);
+  });
+
+  // ── Soft wrap ───────────────────────────────────────────────────────────────
+  // One preference for both panes: two independent wrap toggles was one more
+  // switch than anybody ever set differently.
+
+  function applyWrap(on) {
+    inputEl.classList.toggle('nowrap', !on);
+    treeEl.classList.toggle('nowrap', !on);
+    wrapBtn.classList.toggle('is-nowrap', !on);
+    const label = `Soft wrap: ${on ? 'on' : 'off'}`;
+    wrapBtn.title = label;
+    wrapBtn.setAttribute('aria-label', label);
+    wrapBtn.setAttribute('aria-pressed', String(on));
+    localStorage.setItem(KEY_WRAP, on ? '1' : '0');
+  }
+
+  applyWrap(localStorage.getItem(KEY_WRAP) !== '0');
+  wrapBtn.addEventListener('click', () => applyWrap(inputEl.classList.contains('nowrap')));
 
   // ── Parse & render ──────────────────────────────────────────────────────────
 
@@ -437,10 +489,21 @@
     debounceTimer = setTimeout(update, 120);
   });
 
+  // The empty state advertises pasting, so honour it from anywhere — otherwise
+  // the hint is a lie in tree-only state, where the textarea isn't on screen.
+  document.addEventListener('paste', e => {
+    if (e.target === inputEl) return;
+    const text = e.clipboardData.getData('text');
+    if (!text) return;
+    e.preventDefault();
+    inputEl.value = text;
+    update();
+  });
+
   function update() {
     const raw = inputEl.value.trim();
     if (!raw) {
-      treeEl.innerHTML = '<div class="tree-empty">Tree will appear here</div>';
+      treeEl.innerHTML = `<div class="hint">Paste JSON, or press <kbd>${MOD}V</kbd></div>`;
       errorBar.classList.remove('visible');
       lastParsed = null;
       copyBtn.disabled = true;
@@ -627,17 +690,17 @@
   document.getElementById('btn-expand').addEventListener('click',   () => setAllCollapsed(treeEl, false));
   document.getElementById('btn-collapse').addEventListener('click', () => setAllCollapsed(treeEl, true));
 
-  // ── Copy beautified ─────────────────────────────────────────────────────────
+  // ── Copy ────────────────────────────────────────────────────────────────────
 
   copyBtn.addEventListener('click', () => {
     if (!lastParsed) return;
     navigator.clipboard.writeText(JSON.stringify(lastParsed, null, 2)).then(() => {
-      const prev = copyBtn.textContent;
       copyBtn.textContent = 'Copied!';
-      setTimeout(() => { copyBtn.textContent = prev; }, 1500);
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
     });
   });
 
+  update();
 </script>
 </body>
 </html>
