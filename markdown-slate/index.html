@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markdown Slate — voy/lab</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --accent:    #58a6ff;
+      --code-text: #a5d6ff;
+      --overlay-bg: rgba(13, 17, 23, 0.85);
+      --stripe: rgba(255, 255, 255, 0.02);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:        #ffffff;
+        --surface:   #f6f8fa;
+        --border:    #d0d7de;
+        --text:      #1f2328;
+        --muted:     #656d76;
+        --accent:    #0969da;
+        --code-text: #0550ae;
+        --overlay-bg: rgba(255, 255, 255, 0.85);
+        --stripe: rgba(0, 0, 0, 0.02);
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .breadcrumb { font-size: 14px; color: var(--muted); }
+    .breadcrumb a { color: var(--accent); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb .sep { padding: 0 4px; }
+
+    .btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Layout ── */
+    .main {
+      display: grid;
+      /* minmax(0,…) keeps a long unwrapped line from inflating its own track */
+      grid-template-columns: minmax(0, var(--src-w, 1fr)) 1px minmax(0, 1fr);
+      flex: 1;
+      min-height: 0;
+    }
+
+    body.state-read  .main { grid-template-columns: 1px minmax(0, 1fr); }
+    body.state-write .main { grid-template-columns: minmax(0, 1fr) 1px; }
+
+    body.state-read  .source-pane  { display: none; }
+    body.state-write .preview-pane { display: none; }
+
+    /* ── Splitter: the only mode control ── */
+    .splitter {
+      background: var(--border);
+      cursor: col-resize;
+      position: relative;
+      transition: background 0.15s;
+    }
+
+    /* widen the hit area without widening the 1px line; when the rail is parked
+       against a window edge the slack has to go inward or it lands off-screen */
+    .splitter::after { content: ''; position: absolute; inset: 0 -5px; }
+    body.state-read  .splitter::after { inset: 0 -16px 0 0; }
+    body.state-write .splitter::after { inset: 0 0 0 -16px; }
+
+    .splitter:hover, .splitter.dragging { background: var(--accent); }
+    /* confirms the 50/50 snap by reading as 3px without shifting the layout */
+    .splitter.dragging.centered { box-shadow: 0 0 0 1px var(--accent); }
+    .main.dragging { user-select: none; }
+
+    .chev {
+      position: absolute;
+      top: 50%;
+      opacity: 0;
+      color: var(--muted);
+      pointer-events: none;
+      transition: opacity 0.15s, color 0.15s;
+      transform: translateY(-50%);
+    }
+
+    body.state-read  .chev { left: 3px; opacity: 0.5; }
+    body.state-write .chev { right: 3px; opacity: 0.5; transform: translateY(-50%) scaleX(-1); }
+
+    /* must stay scoped to the collapsed states — unscoped, this outbids the base
+       opacity:0 and a stray chevron appears beside the divider in split view */
+    body.state-read  .splitter:hover .chev,
+    body.state-write .splitter:hover .chev { opacity: 1; color: var(--text); }
+
+    /* ── Source ── */
+    .source-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    textarea {
+      flex: 1;
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      outline: none;
+      resize: none;
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 20px;
+      min-height: 0;
+    }
+
+    body.state-write textarea {
+      max-width: 92ch;
+      margin: 0 auto;
+      padding: 40px 0;
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    /* ── Preview ── */
+    .preview-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .preview-scroll {
+      flex: 1;
+      overflow: auto;
+      padding: 24px 28px;
+      min-height: 0;
+    }
+
+    body.state-read .preview-scroll { padding: 56px 24px; }
+
+    body.state-read .rendered {
+      max-width: 720px;
+      margin: 0 auto;
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .hint {
+      display: flex;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hint kbd {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 11px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+
+    /* ── Markdown rendering ── */
+    .rendered { line-height: 1.7; font-size: 14px; }
+
+    .rendered h1,
+    .rendered h2,
+    .rendered h3,
+    .rendered h4,
+    .rendered h5,
+    .rendered h6 {
+      color: var(--text);
+      font-weight: 600;
+      margin: 1.4em 0 0.5em;
+      line-height: 1.3;
+    }
+    .rendered h1 { font-size: 1.75em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+    .rendered h2 { font-size: 1.35em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+    .rendered h3 { font-size: 1.1em; }
+    .rendered h4 { font-size: 1em; }
+    .rendered h1:first-child,
+    .rendered h2:first-child { margin-top: 0; }
+
+    .rendered p { margin: 0.75em 0; color: var(--text); }
+    .rendered p:first-child { margin-top: 0; }
+
+    .rendered a { color: var(--accent); text-decoration: none; }
+    .rendered a:hover { text-decoration: underline; }
+
+    .rendered strong { font-weight: 600; color: var(--text); }
+    .rendered em { font-style: italic; }
+
+    .rendered ul,
+    .rendered ol {
+      margin: 0.75em 0;
+      padding-left: 1.8em;
+      color: var(--text);
+    }
+    .rendered li { margin: 0.25em 0; }
+    .rendered li + li { margin-top: 0.2em; }
+
+    .rendered code {
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.15em 0.4em;
+      color: var(--code-text);
+    }
+
+    .rendered pre {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 1em 0;
+    }
+
+    .rendered pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .rendered blockquote {
+      border-left: 3px solid var(--border);
+      margin: 1em 0;
+      padding: 4px 16px;
+      color: var(--muted);
+    }
+
+    .rendered hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.5em 0;
+    }
+
+    /* sizes to its content and scrolls instead of squeezing columns into
+       unreadable wrapping when the table is wider than the measure */
+    .rendered table {
+      border-collapse: collapse;
+      display: block;
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+      margin: 1em 0;
+      font-size: 13px;
+    }
+
+    .rendered th,
+    .rendered td {
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      text-align: left;
+    }
+
+    .rendered th {
+      background: var(--surface);
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .rendered td { color: var(--text); }
+    .rendered tr:nth-child(even) td { background: var(--stripe); }
+
+    .rendered img { max-width: 100%; border-radius: 4px; }
+
+    /* ── Drop overlay ── */
+    .drop-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--overlay-bg);
+      border: 2px dashed var(--accent);
+      border-radius: 8px;
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: var(--accent);
+      pointer-events: none;
+    }
+
+    .drop-overlay.active { display: flex; }
+
+    /* ── Print ──
+       The app is a 100vh flex/grid shell with its own scroll containers, so
+       printing needs the whole thing unwound back into normal flow or only the
+       first screenful reaches the paper. Prints the rendered document from any
+       of the three layout states — ⌘P needs no button. */
+    @media print {
+      /* last-wins over both the dark default and the light-scheme block */
+      :root {
+        --bg:        #fff;
+        --surface:   #f7f7f7;
+        --border:    #bbb;
+        --text:      #000;
+        --muted:     #444;
+        --accent:    #000;
+        --code-text: #000;
+        --stripe:    transparent;
+      }
+
+      /* side margins are set wide deliberately: A4 minus 48mm at 12pt lands the
+         measure near 75 characters, where 16mm would have run past 90 */
+      @page { margin: 20mm 24mm; }
+
+      html, body {
+        display: block;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+        color: #000;
+      }
+
+      header,
+      .splitter,
+      .source-pane,
+      .drop-overlay,
+      .hint { display: none !important; }
+
+      .main { display: block !important; }
+
+      .preview-pane { display: block !important; }
+
+      .preview-scroll {
+        display: block !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        min-height: 0;
+      }
+
+      .rendered {
+        max-width: none !important;
+        margin: 0 !important;
+        font-size: 12pt;
+        line-height: 1.55;
+        orphans: 3;
+        widows: 3;
+      }
+
+      /* the on-screen px sizes are tuned against a 14-16px body; rescale the
+         monospace and table type to the print body instead */
+      .rendered pre code { font-size: 9.5pt; line-height: 1.45; }
+      .rendered table { font-size: 10pt; }
+
+      /* a heading stranded at the foot of a page is the most common print defect */
+      .rendered h1,
+      .rendered h2,
+      .rendered h3,
+      .rendered h4,
+      .rendered h5,
+      .rendered h6 { break-after: avoid; break-inside: avoid; }
+
+      /* the on-screen rule makes tables scroll, which paper can't do — put the
+         table display back so it paginates and repeats its header */
+      .rendered table {
+        display: table;
+        width: 100%;
+        overflow: visible;
+      }
+
+      .rendered thead { display: table-header-group; }
+      .rendered tr { break-inside: avoid; }
+
+      /* no horizontal scroll on paper either, so long lines have to wrap */
+      .rendered pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow: visible;
+      }
+
+      .rendered img { break-inside: avoid; }
+
+      /* a printed link is dead without its target */
+      .rendered a { text-decoration: underline; }
+
+      /* text-decoration propagates and can't be cancelled by a descendant or
+         pseudo-element, so the appended URL would come out underlined too. Drop
+         the rule on external links and let the visible URL be the marker; local
+         and anchor links keep the underline since they get no URL appended. */
+      .rendered a[href^="http"] { text-decoration: none; }
+      .rendered a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: 0.85em;
+        color: #555;
+        word-break: break-all;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="drop-overlay" id="drop-overlay">Drop file to open</div>
+
+<header>
+  <div class="breadcrumb">
+    <a href="../">voy/lab</a>
+    <span class="sep">/</span>
+    <span>markdown-slate</span>
+  </div>
+  <button class="btn" id="btn-open">Open</button>
+  <input type="file" id="file-input" accept=".md,.markdown,.txt" hidden>
+</header>
+
+<div class="main">
+  <div class="source-pane">
+    <textarea id="input" spellcheck="false"></textarea>
+  </div>
+
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="-1"
+       title="Drag to resize, snaps at 50/50 · drag into an edge to collapse a pane · double-click to reset · ⌘\ cycles">
+    <svg class="chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 2.5 7.5 6 4 9.5"/>
+    </svg>
+  </div>
+
+  <div class="preview-pane">
+    <div class="preview-scroll" id="preview"></div>
+  </div>
+</div>
+
+<script>
+  const inputEl    = document.getElementById('input');
+  const previewEl  = document.getElementById('preview');
+  const mainEl     = document.querySelector('.main');
+  const splitter   = document.getElementById('splitter');
+  const openBtn    = document.getElementById('btn-open');
+  const fileInput  = document.getElementById('file-input');
+
+  const KEY_CONTENT = 'markdown-slate:content';
+  const KEY_STATE   = 'markdown-slate:state';
+  const KEY_SPLIT   = 'markdown-slate:split';
+
+  const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
+  const MOD    = IS_MAC ? '⌘' : 'Ctrl';
+
+  // ── Layout state ────────────────────────────────────────────────────────────
+  // 'split' | 'read' (source collapsed) | 'write' (preview collapsed)
+
+  const STATES = ['split', 'read', 'write'];
+  let state = STATES.includes(localStorage.getItem(KEY_STATE)) ? localStorage.getItem(KEY_STATE) : 'split';
+
+  function setState(next, persist = true) {
+    if (next === state) return;
+    state = next;
+    document.body.classList.remove('state-split', 'state-read', 'state-write');
+    document.body.classList.add(`state-${state}`);
+    if (persist) localStorage.setItem(KEY_STATE, state);
+  }
+
+  document.body.classList.add(`state-${state}`);
+
+  // ── Split position ──────────────────────────────────────────────────────────
+  // The snap zone doubles as the minimum pane width: you can never drag a pane
+  // narrower than it, because crossing it collapses the pane instead.
+  const SNAP = 120;
+  // pulling the divider near the middle drops the stored width entirely, so the
+  // panes fall back to 1fr/1fr — an exact 50/50 that survives a window resize
+  const CENTER_SNAP = 28;
+
+  let splitWidth = Number(localStorage.getItem(KEY_SPLIT)) || null;
+
+  // clamps to the current window without overwriting the stored preference
+  function applySplit() {
+    const max = mainEl.clientWidth - SNAP;
+    if (splitWidth === null || max < SNAP) {
+      mainEl.style.removeProperty('--src-w');
+      return;
+    }
+    mainEl.style.setProperty('--src-w', `${Math.min(Math.max(splitWidth, SNAP), max)}px`);
+  }
+
+  function setSplit(px) {
+    if (px === null) {
+      splitWidth = null;
+      localStorage.removeItem(KEY_SPLIT);
+    } else {
+      splitWidth = px;
+      localStorage.setItem(KEY_SPLIT, String(px));
+    }
+    applySplit();
+  }
+
+  applySplit();
+  window.addEventListener('resize', applySplit);
+
+  // ── Drag: one gesture spans all three states ────────────────────────────────
+
+  let dragging = false, moved = false, startX = 0;
+
+  splitter.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    try { splitter.setPointerCapture(e.pointerId); } catch {}
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    splitter.classList.add('dragging');
+    mainEl.classList.add('dragging');
+  });
+
+  splitter.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    if (Math.abs(e.clientX - startX) > 3) moved = true;
+    if (!moved) return;
+    // absolute cursor position drives the state, so dragging back inward from a
+    // collapsed edge reopens the pane even though the rail itself has moved
+    const x = e.clientX - mainEl.getBoundingClientRect().left;
+    if (x < SNAP) {
+      setState('read');
+      splitter.classList.remove('centered');
+    } else if (x > mainEl.clientWidth - SNAP) {
+      setState('write');
+      splitter.classList.remove('centered');
+    } else {
+      setState('split');
+      const mid = mainEl.clientWidth / 2;
+      setSplit(Math.abs(x - mid) < CENTER_SNAP ? null : x);
+      splitter.classList.toggle('centered', splitWidth === null);
+    }
+  });
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging', 'centered');
+    mainEl.classList.remove('dragging');
+    // a click (no drag) on a parked rail pulls the collapsed pane back out
+    if (!moved && state !== 'split') setState('split');
+  }
+
+  splitter.addEventListener('pointerup', endDrag);
+  splitter.addEventListener('lostpointercapture', endDrag);
+
+  splitter.addEventListener('dblclick', () => {
+    setState('split');
+    setSplit(null);
+  });
+
+  // ── Keyboard ────────────────────────────────────────────────────────────────
+
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (e.key === '\\') {
+      e.preventDefault();
+      setState(STATES[(STATES.indexOf(state) + 1) % STATES.length]);
+    } else if (e.key === 'o' || e.key === 'O') {
+      e.preventDefault();
+      openFile();
+    }
+  });
+
+  // ── File loading ────────────────────────────────────────────────────────────
+
+  const FILE_PICKER_TYPES = [{
+    description: 'Markdown',
+    accept: { 'text/markdown': ['.md', '.markdown'], 'text/plain': ['.txt'] },
+  }];
+
+  let fileHandle = null;
+  let loadedText = null;   // last text seen on disk; a diff against the buffer means unsaved edits
+
+  async function openFile() {
+    if (!window.showOpenFilePicker) {
+      fileInput.click();
+      return;
+    }
+    try {
+      const [handle] = await window.showOpenFilePicker({ types: FILE_PICKER_TYPES });
+      fileHandle = handle;
+      const text = await (await handle.getFile()).text();
+      setContent(text);
+      loadedText = text;
+    } catch (err) {
+      if (err.name !== 'AbortError') console.error(err);
+    }
+  }
+
+  openBtn.addEventListener('click', openFile);
+
+  fileInput.addEventListener('change', () => {
+    readBlob(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  function readBlob(file) {
+    if (!file) return;
+    fileHandle = null;
+    loadedText = null;
+    const reader = new FileReader();
+    reader.onload = ev => setContent(ev.target.result);
+    reader.readAsText(file);
+  }
+
+  function setContent(text) {
+    inputEl.value = text;
+    save();
+    update();
+  }
+
+  // Reload on refocus — the external-editor workflow with no button. Skipped
+  // when the buffer diverges from disk, so in-app edits are never clobbered.
+  window.addEventListener('focus', async () => {
+    if (!fileHandle || inputEl.value !== loadedText) return;
+    try {
+      const text = await (await fileHandle.getFile()).text();
+      if (text === loadedText) return;
+      loadedText = text;
+      const top = previewEl.scrollTop;
+      setContent(text);
+      previewEl.scrollTop = top;
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  // ── Drag and drop ───────────────────────────────────────────────────────────
+
+  const dropOverlay = document.getElementById('drop-overlay');
+  let dragDepth = 0;
+
+  document.addEventListener('dragenter', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepth++;
+    dropOverlay.classList.add('active');
+  });
+
+  document.addEventListener('dragleave', () => {
+    if (--dragDepth === 0) dropOverlay.classList.remove('active');
+  });
+
+  document.addEventListener('dragover', e => e.preventDefault());
+
+  function handleDrop(e) {
+    e.preventDefault();
+    dragDepth = 0;
+    dropOverlay.classList.remove('active');
+    readBlob(e.dataTransfer.files[0]);
+  }
+
+  document.addEventListener('drop', handleDrop);
+
+  // the textarea would otherwise swallow the drop and paste the path as text
+  inputEl.addEventListener('dragover', e => e.preventDefault());
+  inputEl.addEventListener('drop', e => { e.stopPropagation(); handleDrop(e); });
+
+  // The empty state advertises pasting, so honour it from anywhere — otherwise
+  // the hint is a lie in read mode, where the textarea isn't even on screen.
+  document.addEventListener('paste', e => {
+    if (e.target === inputEl) return;
+    const text = e.clipboardData.getData('text');
+    if (!text) return;
+    e.preventDefault();
+    fileHandle = null;
+    loadedText = null;
+    setContent(text);
+    if (state === 'read') return;
+    inputEl.focus();
+  });
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  let debounceTimer;
+  inputEl.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { update(); save(); }, 80);
+  });
+
+  function save() {
+    if (inputEl.value.trim()) {
+      localStorage.setItem(KEY_CONTENT, inputEl.value);
+    } else {
+      localStorage.removeItem(KEY_CONTENT);
+    }
+  }
+
+  function update() {
+    const raw = inputEl.value;
+    if (!raw.trim()) {
+      previewEl.innerHTML = `<div class="hint">Drop a file, paste, or <kbd>${MOD}O</kbd></div>`;
+      return;
+    }
+    const div = document.createElement('div');
+    div.className = 'rendered';
+    div.innerHTML = marked.parse(raw);
+    previewEl.innerHTML = '';
+    previewEl.appendChild(div);
+  }
+
+  inputEl.value = localStorage.getItem(KEY_CONTENT) || '';
+  update();
+</script>
+</body>
+</html>
