@@ -91,6 +91,11 @@
       background: var(--border);
       cursor: col-resize;
       position: relative;
+      /* must outrank .preview-pane (also position:relative, for the content
+         rails) — otherwise the pane, being later in the DOM, paints over the
+         splitter's own extended hit zone below and the collapsed-edge grab
+         area shrinks down to the literal 1px line */
+      z-index: 3;
       transition: background 0.15s;
     }
 
@@ -158,6 +163,7 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
+      position: relative;
     }
 
     .preview-scroll {
@@ -170,11 +176,47 @@
     body.state-read .preview-scroll { padding: 56px 24px; }
 
     body.state-read .rendered {
-      max-width: 720px;
-      margin: 0 auto;
       font-size: 16px;
       line-height: 1.75;
     }
+
+    /* ── Content-width rails ──
+       Mirror the splitter: invisible hit strips parked at the rendered
+       content's edges, revealed on hover, draggable to change the reading
+       measure. Widening/narrowing is symmetric because .rendered is
+       centered with margin auto. */
+    .content-rail {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 25px;
+      transform: translateX(-50%);
+      cursor: col-resize;
+      z-index: 2;
+    }
+
+    .preview-pane.empty .content-rail { display: none; }
+
+    .content-rail::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 1px;
+      background: var(--accent);
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    /* 'active' is applied to BOTH rails together (see JS) — a drag on
+       either one resizes both sides symmetrically, so the hover/drag
+       affordance should announce that by lighting up together */
+    .content-rail.active::before,
+    .content-rail.dragging::before { opacity: 1; }
+
+    /* confirms the default-width snap the same way the splitter confirms 50/50 */
+    .content-rail.dragging.snapped::before { box-shadow: 0 0 0 1px var(--accent); }
 
     .hint {
       display: flex;
@@ -196,7 +238,12 @@
     }
 
     /* ── Markdown rendering ── */
-    .rendered { line-height: 1.7; font-size: 14px; }
+    .rendered {
+      line-height: 1.7;
+      font-size: 14px;
+      max-width: var(--content-w, 720px);
+      margin: 0 auto;
+    }
 
     .rendered h1,
     .rendered h2,
@@ -276,14 +323,16 @@
     }
 
     /* sizes to its content and scrolls instead of squeezing columns into
-       unreadable wrapping when the table is wider than the measure */
+       unreadable wrapping when the table is wider than the measure — margin
+       is auto (not 0) so a table narrower than the measure centers instead
+       of pinning to the left as the reading width is dragged wider */
     .rendered table {
       border-collapse: collapse;
       display: block;
       width: max-content;
       max-width: 100%;
       overflow-x: auto;
-      margin: 1em 0;
+      margin: 1em auto;
       font-size: 13px;
     }
 
@@ -355,6 +404,7 @@
 
       header,
       .splitter,
+      .content-rail,
       .source-pane,
       .drop-overlay,
       .hint { display: none !important; }
@@ -456,22 +506,30 @@
     </svg>
   </div>
 
-  <div class="preview-pane">
+  <div class="preview-pane" id="preview-pane">
     <div class="preview-scroll" id="preview"></div>
+    <div class="content-rail" id="rail-left"
+         title="Drag to resize reading width · snaps at default · double-click to reset"></div>
+    <div class="content-rail" id="rail-right"
+         title="Drag to resize reading width · snaps at default · double-click to reset"></div>
   </div>
 </div>
 
 <script>
   const inputEl    = document.getElementById('input');
   const previewEl  = document.getElementById('preview');
+  const previewPane = document.getElementById('preview-pane');
   const mainEl     = document.querySelector('.main');
   const splitter   = document.getElementById('splitter');
+  const railLeft   = document.getElementById('rail-left');
+  const railRight  = document.getElementById('rail-right');
   const openBtn    = document.getElementById('btn-open');
   const fileInput  = document.getElementById('file-input');
 
-  const KEY_CONTENT = 'markdown-slate:content';
-  const KEY_STATE   = 'markdown-slate:state';
-  const KEY_SPLIT   = 'markdown-slate:split';
+  const KEY_CONTENT   = 'markdown-slate:content';
+  const KEY_STATE     = 'markdown-slate:state';
+  const KEY_SPLIT     = 'markdown-slate:split';
+  const KEY_CONTENT_W = 'markdown-slate:content-width';
 
   const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
   const MOD    = IS_MAC ? '⌘' : 'Ctrl';
@@ -488,6 +546,7 @@
     document.body.classList.remove('state-split', 'state-read', 'state-write');
     document.body.classList.add(`state-${state}`);
     if (persist) localStorage.setItem(KEY_STATE, state);
+    if (typeof syncRails === 'function') syncRails();
   }
 
   document.body.classList.add(`state-${state}`);
@@ -526,15 +585,128 @@
   applySplit();
   window.addEventListener('resize', applySplit);
 
+  // ── Content width (reading measure) ─────────────────────────────────────────
+  // Two rails parked at the rendered content's edges. Dragging either one is
+  // symmetric because .rendered is centered — matches the splitter's snap
+  // pattern: near the default measure snaps exactly to it, near the pane's
+  // full width snaps to uncapped.
+  const DEFAULT_CONTENT_W = 720;
+  const CONTENT_SNAP = 24;
+  const FULL_SNAP    = 24;
+  const MIN_CONTENT_W = 360;
+  // a gap between the rail's line and the text edge, so it doesn't read as
+  // touching the content — clamped to whatever slack the pane has, so a rail
+  // never gets pushed past the pane's own edge
+  const RAIL_GAP = 20;
+
+  // null = default (720), 'none' = uncapped, otherwise an explicit px number
+  let contentWidth = localStorage.getItem(KEY_CONTENT_W);
+  if (contentWidth !== null && contentWidth !== 'none') contentWidth = Number(contentWidth);
+
+  function setContentWidth(value, persist = true) {
+    contentWidth = value;
+    if (persist) {
+      if (value === null) localStorage.removeItem(KEY_CONTENT_W);
+      else localStorage.setItem(KEY_CONTENT_W, String(value));
+    }
+    if (value === null) previewPane.style.removeProperty('--content-w');
+    else previewPane.style.setProperty('--content-w', value === 'none' ? 'none' : `${value}px`);
+    syncRails();
+  }
+
+  setContentWidth(contentWidth, false);
+
+  function previewPaddingX() {
+    return parseFloat(getComputedStyle(previewEl).paddingLeft) || 0;
+  }
+
+  // computed analytically from state (pane size, padding, content width)
+  // rather than measured off the live .rendered node — that node is torn
+  // down and rebuilt on every keystroke, so measuring it raced a rebuild
+  // mid-flight and could leave one rail positioned off a stale/missing rect
+  function syncRails() {
+    if (previewPane.classList.contains('empty')) return;
+    const pad = previewPaddingX();
+    const boxWidth = previewEl.clientWidth; // excludes any vertical scrollbar
+    const avail = Math.max(0, boxWidth - pad * 2);
+    const widthPx = contentWidth === 'none' ? avail
+      : contentWidth === null ? Math.min(DEFAULT_CONTENT_W, avail)
+      : Math.min(contentWidth, avail);
+    const inset = pad + (avail - widthPx) / 2;
+    const gap = Math.min(RAIL_GAP, Math.max(0, inset));
+    railLeft.style.left  = `${inset - gap}px`;
+    railRight.style.left = `${boxWidth - inset + gap}px`;
+  }
+
+  new ResizeObserver(syncRails).observe(previewPane);
+
+  let railDragging = null; // 'left' | 'right' | null
+
+  // 'active' goes on both rails together — dragging either one moves both
+  // sides, so hovering either should preview that by lighting up both lines
+  function setRailsActive(active) {
+    railLeft.classList.toggle('active', active);
+    railRight.classList.toggle('active', active);
+  }
+
+  function railPointerDown(e) {
+    const rail = e.currentTarget;
+    e.preventDefault();
+    try { rail.setPointerCapture(e.pointerId); } catch {}
+    railDragging = rail;
+    rail.classList.add('dragging');
+    setRailsActive(true);
+  }
+
+  function railPointerMove(e) {
+    if (!railDragging) return;
+    const paneRect = previewPane.getBoundingClientRect();
+    const centerX = paneRect.left + paneRect.width / 2;
+    let width = 2 * Math.abs(e.clientX - centerX);
+    width = Math.max(MIN_CONTENT_W, width);
+
+    if (width >= paneRect.width - FULL_SNAP) {
+      setContentWidth('none');
+    } else if (Math.abs(width - DEFAULT_CONTENT_W) <= CONTENT_SNAP) {
+      setContentWidth(null);
+    } else {
+      setContentWidth(Math.round(width));
+    }
+    railDragging.classList.toggle('snapped', contentWidth === null);
+  }
+
+  function railPointerUp() {
+    if (!railDragging) return;
+    const rail = railDragging;
+    railDragging.classList.remove('dragging', 'snapped');
+    railDragging = null;
+    setRailsActive(rail.matches(':hover'));
+  }
+
+  [railLeft, railRight].forEach(rail => {
+    rail.addEventListener('pointerdown', railPointerDown);
+    rail.addEventListener('pointermove', railPointerMove);
+    rail.addEventListener('pointerup', railPointerUp);
+    rail.addEventListener('lostpointercapture', railPointerUp);
+    rail.addEventListener('dblclick', () => setContentWidth(null));
+    rail.addEventListener('pointerenter', () => setRailsActive(true));
+    rail.addEventListener('pointerleave', () => { if (!railDragging) setRailsActive(false); });
+  });
+
   // ── Drag: one gesture spans all three states ────────────────────────────────
 
   let dragging = false, moved = false, startX = 0;
+  // tracks whether the drag ever actually escaped its starting state — a
+  // hesitant drag off a collapsed edge that never crosses SNAP should still
+  // reopen the pane on release, not silently re-collapse to where it started
+  let stateChangedDuringDrag = false;
 
   splitter.addEventListener('pointerdown', e => {
     e.preventDefault();
     try { splitter.setPointerCapture(e.pointerId); } catch {}
     dragging = true;
     moved = false;
+    stateChangedDuringDrag = false;
     startX = e.clientX;
     splitter.classList.add('dragging');
     mainEl.classList.add('dragging');
@@ -547,6 +719,7 @@
     // absolute cursor position drives the state, so dragging back inward from a
     // collapsed edge reopens the pane even though the rail itself has moved
     const x = e.clientX - mainEl.getBoundingClientRect().left;
+    const prevState = state;
     if (x < SNAP) {
       setState('read');
       splitter.classList.remove('centered');
@@ -559,6 +732,7 @@
       setSplit(Math.abs(x - mid) < CENTER_SNAP ? null : x);
       splitter.classList.toggle('centered', splitWidth === null);
     }
+    if (state !== prevState) stateChangedDuringDrag = true;
   });
 
   function endDrag() {
@@ -566,8 +740,10 @@
     dragging = false;
     splitter.classList.remove('dragging', 'centered');
     mainEl.classList.remove('dragging');
-    // a click (no drag) on a parked rail pulls the collapsed pane back out
-    if (!moved && state !== 'split') setState('split');
+    // a click (no drag), or a drag that never actually escaped the starting
+    // collapsed state, both pull the collapsed pane back out — only a drag
+    // that visibly changed state at some point counts as intentional
+    if ((!moved || !stateChangedDuringDrag) && state !== 'split') setState('split');
   }
 
   splitter.addEventListener('pointerup', endDrag);
@@ -717,6 +893,7 @@
 
   function update() {
     const raw = inputEl.value;
+    previewPane.classList.toggle('empty', !raw.trim());
     if (!raw.trim()) {
       previewEl.innerHTML = `<div class="hint">Drop a file, paste, or <kbd>${MOD}O</kbd></div>`;
       return;
@@ -726,6 +903,7 @@
     div.innerHTML = marked.parse(raw);
     previewEl.innerHTML = '';
     previewEl.appendChild(div);
+    syncRails();
   }
 
   inputEl.value = localStorage.getItem(KEY_CONTENT) || '';
