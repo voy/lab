@@ -102,7 +102,11 @@
     /* widen the hit area without widening the 1px line; when the rail is parked
        against a window edge the slack has to go inward or it lands off-screen */
     .splitter::after { content: ''; position: absolute; inset: 0 -5px; }
-    body.state-read  .splitter::after { inset: 0 -16px 0 0; }
+    /* kept narrower than the write-state mirror (8px, not 16px) — the preview
+       pane's left content-rail needs to park in that same corner (see
+       RAIL_MIN_INSET_READ in the script), and there isn't room for both a
+       16px grab zone and a 25px-wide rail before the content's own left edge */
+    body.state-read  .splitter::after { inset: 0 -8px 0 0; }
     body.state-write .splitter::after { inset: 0 0 0 -16px; }
 
     .splitter:hover, .splitter.dragging { background: var(--accent); }
@@ -599,6 +603,14 @@
   // never gets pushed past the pane's own edge
   const RAIL_GAP = 20;
 
+  // in read state the collapsed splitter parks its hit zone AND its visible
+  // chevron (.chev, left: 3px + its 12px icon width, so it reaches ~14px
+  // into the preview pane) against the pane's left edge; without a floor
+  // the left rail can land on top of either. 18 clears the chevron with a
+  // few px to spare while leaving a visible gap before the text, which
+  // starts at the pane's 24px padding.
+  const RAIL_MIN_INSET_READ = 18;
+
   // null = default (720), 'none' = uncapped, otherwise an explicit px number
   let contentWidth = localStorage.getItem(KEY_CONTENT_W);
   if (contentWidth !== null && contentWidth !== 'none') contentWidth = Number(contentWidth);
@@ -634,7 +646,9 @@
       : Math.min(contentWidth, avail);
     const inset = pad + (avail - widthPx) / 2;
     const gap = Math.min(RAIL_GAP, Math.max(0, inset));
-    railLeft.style.left  = `${inset - gap}px`;
+    let leftPos = inset - gap;
+    if (state === 'read') leftPos = Math.max(leftPos, RAIL_MIN_INSET_READ);
+    railLeft.style.left  = `${leftPos}px`;
     railRight.style.left = `${boxWidth - inset + gap}px`;
   }
 
