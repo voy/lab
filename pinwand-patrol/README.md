@@ -39,13 +39,15 @@ leak to parents on a later run.
    - `BOARD_ID` and `SHARE_TOKEN` — the two UUIDs from the share link
      `https://www.taskcards.de/#/board/<BOARD_ID>?token=<SHARE_TOKEN>`
    - `BOARD_PASSWORD` — the board password
-   - `EMAIL_TO` — comma-separated recipients (the parents). Delivered via BCC
+   - `SHEET_ID` — spreadsheet ID holding the recipients (the parents): first
+     tab, no header row, column A = name, column B = email. Delivered via BCC
      so parents don't see each other's addresses; the admin is the visible To.
    - `EMAIL_ADMIN` — optional; receives ops emails (failures, degraded
      summaries) and `testRun()` output. Defaults to the script owner.
    - `ANTHROPIC_API_KEY` — optional, for the Claude summary
-3. Run `debugRun()` once to grant permissions and store the baseline snapshot
-   (first run never emails).
+3. Run `debugRecipients_()` to confirm the sheet reads correctly (logs the
+   parsed emails, sends nothing), then `debugRun()` once to grant permissions
+   and store the baseline snapshot (first run never emails).
 4. Run `testRun()` — it simulates realistic changes (a "new" post, a "moved"
    date, a "new" attachment, all built from real board content) and sends the
    resulting HTML email to the admin only, subject-tagged "(Test)". Parents

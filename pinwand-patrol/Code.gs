@@ -7,7 +7,8 @@
 //   BOARD_ID           board UUID from the share link
 //   SHARE_TOKEN        token UUID from the share link
 //   BOARD_PASSWORD     the board password
-//   EMAIL_TO           comma-separated recipient list (the parents)
+//   SHEET_ID           spreadsheet ID with recipients: first tab, no header
+//                       row, column A = name, column B = email
 //   EMAIL_ADMIN        optional — ops emails + testRun() recipient; defaults to the script owner
 //   ANTHROPIC_API_KEY  optional — without it, emails contain plain change counts
 //
@@ -107,6 +108,21 @@ function simulateChanges() {
   );
 }
 
+// --- Recipients (Sheet) ---
+
+function getRecipients_() {
+  const rows = SpreadsheetApp.openById(PROPS.getProperty("SHEET_ID")).getSheets()[0].getDataRange().getValues();
+  return rows
+    .map(function (r) { return String(r[1] || "").trim(); })
+    .filter(function (email) { return email.indexOf("@") !== -1; });
+}
+
+// Manual run: logs the parsed recipient list, sends nothing.
+function debugRecipients_() {
+  const emails = getRecipients_();
+  Logger.log("%s recipient(s):\n%s", String(emails.length), emails.join("\n"));
+}
+
 function run_(sendEmail, recipientOverride) {
   const board = fetchBoard_();
   const snapshot = normalize_(board);
@@ -177,7 +193,7 @@ function run_(sendEmail, recipientOverride) {
       body: body,
       htmlBody: html,
     };
-    if (!recipientOverride) mail.bcc = PROPS.getProperty("EMAIL_TO");
+    if (!recipientOverride) mail.bcc = getRecipients_().join(",");
     MailApp.sendEmail(mail);
     Logger.log("Email sent to %s (bcc: %s).", mail.to, mail.bcc || "—");
   } else {
