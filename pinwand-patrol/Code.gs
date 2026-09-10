@@ -229,7 +229,7 @@ function unlock_(token) {
 const BOARD_QUERY =
   "query ($id: String!) { board(id: $id) { id name " +
   "lists { id name position } " +
-  "cards { id title description link created modified " +
+  "cards { id title description link created modified color " +
   "attachments { filename } comments { text } " +
   "kanbanPosition { listId position } } } }";
 
@@ -286,22 +286,67 @@ function writeSnapshot_(snapshot) {
 
 // --- Normalize & diff ---
 
+// Some lists hold cards for more than one subject, separated by a colored
+// "header" card that carries no content of its own — e.g. a plain, colored
+// "Mathematik" card marks where the Deutsch-list cards below it are actually
+// Mathe. Detect those and attribute each following card's fach until the
+// next header (or end of list).
+function isFachHeader_(card) {
+  const plainDescription = card.description.replace(/<[^>]*>/g, "").trim();
+  return Boolean(
+    card.color && card.color.toLowerCase() !== "#ffffff" && !plainDescription &&
+      card.attachments.length === 0 && card.comments.length === 0,
+  );
+}
+
 function normalize_(board) {
   const listName = {};
   board.lists.forEach(function (l) {
     listName[l.id] = l.name.trim();
   });
-  const cards = board.cards
+
+  const raw = board.cards.map(function (c) {
+    const pos = c.kanbanPosition || {};
+    return {
+      id: c.id,
+      listId: pos.listId || null,
+      position: pos.position || 0,
+      list: listName[pos.listId] || null,
+      title: (c.title || "").trim(),
+      description: c.description || "",
+      link: c.link || "",
+      color: c.color || "",
+      attachments: (c.attachments || []).map(function (a) { return a.filename; }).sort(),
+      comments: (c.comments || []).map(function (x) { return x.text; }),
+      modified: c.modified,
+    };
+  });
+
+  const byList = {};
+  raw.forEach(function (c) { (byList[c.listId] = byList[c.listId] || []).push(c); });
+  Object.keys(byList).forEach(function (listId) {
+    const cards = byList[listId].sort(function (a, b) { return a.position - b.position; });
+    let fach = null;
+    cards.forEach(function (c) {
+      if (isFachHeader_(c)) {
+        fach = c.title || null;
+      } else {
+        c.fach = fach;
+      }
+    });
+  });
+
+  const cards = raw
     .map(function (c) {
-      const listId = c.kanbanPosition ? c.kanbanPosition.listId : null;
       return {
         id: c.id,
-        list: listName[listId] || null,
-        title: (c.title || "").trim(),
-        description: c.description || "",
-        link: c.link || "",
-        attachments: (c.attachments || []).map(function (a) { return a.filename; }).sort(),
-        comments: (c.comments || []).map(function (x) { return x.text; }),
+        list: c.list,
+        fach: c.fach || null,
+        title: c.title,
+        description: c.description,
+        link: c.link,
+        attachments: c.attachments,
+        comments: c.comments,
         modified: c.modified,
       };
     })
@@ -313,7 +358,7 @@ function normalize_(board) {
   return { board: board.name, lists: lists, cards: cards };
 }
 
-const CONTENT_FIELDS = ["list", "title", "description", "link", "attachments", "comments"];
+const CONTENT_FIELDS = ["list", "fach", "title", "description", "link", "attachments", "comments"];
 
 function contentKey_(card) {
   const o = {};
@@ -353,6 +398,10 @@ const SUMMARY_PROMPT =
   "For changed cards, say what actually changed (for a moved date: old and new). " +
   "Mention new file attachments by filename so parents know to open them on the board. " +
   "Keep card and list titles verbatim.\n\n" +
+  "Each card carries a fach field — the school subject, derived from colored section-header " +
+  "cards on the board — which may be null. If you mention a card's subject, use this field's " +
+  "exact value; never infer or guess a subject from the card's title or content, even if one " +
+  "seems obvious. If fach is null, don't attribute a subject at all.\n\n" +
   "Only report what is in the diff — never infer or invent details. If a change is trivial " +
   "(typo, formatting), say so in a few words instead of dramatizing it.";
 
@@ -431,17 +480,24 @@ function fallbackSummary_(diff, snapshot) {
 
 // --- Email ---
 
+function cardLabel_(card) {
+  return card.fach || card.list || null;
+}
+
 // Plain-text version (fallback for clients that don't render HTML).
 function buildEmail_(summary, diff) {
   const lines = [summary.replace(/\*\*/g, ""), "", "Betroffene Karten:"];
   diff.added.forEach(function (c) {
-    lines.push("  + " + (c.title || "(ohne Titel)") + (c.list ? " — " + c.list : ""));
+    const label = cardLabel_(c);
+    lines.push("  + " + (c.title || "(ohne Titel)") + (label ? " — " + label : ""));
   });
   diff.changed.forEach(function (x) {
-    lines.push("  ~ " + (x.after.title || "(ohne Titel)") + (x.after.list ? " — " + x.after.list : ""));
+    const label = cardLabel_(x.after);
+    lines.push("  ~ " + (x.after.title || "(ohne Titel)") + (label ? " — " + label : ""));
   });
   diff.removed.forEach(function (c) {
-    lines.push("  − " + (c.title || "(ohne Titel)") + (c.list ? " — " + c.list : ""));
+    const label = cardLabel_(c);
+    lines.push("  − " + (c.title || "(ohne Titel)") + (label ? " — " + label : ""));
   });
   lines.push("");
   lines.push("—");
@@ -477,11 +533,12 @@ function buildHtmlEmail_(summary, diff) {
     "?token=" + PROPS.getProperty("SHARE_TOKEN");
 
   function row(label, color, card) {
+    const cardLabel = cardLabel_(card);
     return (
       '<tr><td style="padding:3px 10px 3px 0;white-space:nowrap;vertical-align:top">' +
       '<span style="font-weight:600;color:' + color + '">' + label + "</span></td>" +
       '<td style="padding:3px 0">' + escapeHtml_(card.title || "(ohne Titel)") +
-      (card.list ? ' <span style="color:#888">— ' + escapeHtml_(card.list) + "</span>" : "") +
+      (cardLabel ? ' <span style="color:#888">— ' + escapeHtml_(cardLabel) + "</span>" : "") +
       "</td></tr>"
     );
   }
