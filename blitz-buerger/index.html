@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BlitzBürger</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0d1117">
+  <style>
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #8b949e;
+      --accent-dim:  #1f6feb;
+      --correct:     #2ea043;
+      --correct-dim: #1a7431;
+      --wrong:       #da3633;
+      --wrong-dim:   #a3211e;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      min-height: 100svh;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    nav {
+      display: flex;
+      gap: 6px;
+    }
+
+    .tab-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 6px 12px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .tab-btn.active {
+      color: var(--text);
+      border-color: var(--accent-dim);
+    }
+
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    section[hidden] { display: none; }
+
+    /* ── Quiz screen ── */
+    #screen-quiz {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    #quiz-progress {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #question-text {
+      font-size: 20px;
+      line-height: 1.4;
+      font-weight: 500;
+      text-align: center;
+      padding: 8px 4px;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #question-image {
+      display: block;
+      max-width: 100%;
+      max-height: 220px;
+      margin: 0 auto;
+      border-radius: 10px;
+      object-fit: contain;
+    }
+
+    #choices {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-bottom: 8px;
+    }
+
+    .choice-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1.35;
+      text-align: left;
+      padding: 16px 18px;
+      min-height: 56px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    @media (hover: hover) {
+      .choice-btn:hover:not(:disabled) { border-color: var(--accent-dim); }
+    }
+    .choice-btn:disabled { cursor: default; }
+    .choice-btn.correct { background: var(--correct); border-color: var(--correct-dim); color: #fff; }
+    .choice-btn.wrong   { background: var(--wrong);   border-color: var(--wrong-dim);   color: #fff; }
+
+    #quiz-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 40px 12px;
+    }
+
+    /* ── Stats screen ── */
+    #screen-stats {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .stats-summary-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .stat-tile {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat-tile-value { font-size: 24px; font-weight: 600; }
+    .stat-tile-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+
+    #stats-problems-title {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    #stats-problems {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #stats-problems li {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    #stats-problems .wrong-count {
+      color: var(--wrong);
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #stats-problems-empty {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── Settings screen ── */
+    #screen-settings {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .settings-group {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .settings-group-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    #sync-code-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      padding: 10px 12px;
+      outline: none;
+    }
+    #sync-code-input:focus { border-color: var(--accent-dim); }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .settings-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 10px 16px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 0;
+      transition: border-color 0.15s;
+    }
+    .settings-btn:hover { border-color: var(--accent-dim); }
+
+    .file-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 10px 16px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      transition: border-color 0.15s;
+    }
+    .file-btn:hover { border-color: var(--accent-dim); }
+
+    #sync-status {
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 16px;
+    }
+
+    .settings-hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    #sync-status-label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .sync-status-ok    { color: var(--correct); }
+    .sync-status-warn  { color: var(--wrong); }
+    .sync-status-none  { color: var(--muted); }
+
+    .sync-status-rows {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* ── Stale-data banner ── */
+    #stale-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font-size: 12px;
+      padding: 8px 16px;
+    }
+    #stale-banner[hidden] { display: none; }
+    #stale-banner-text { flex: 1; }
+    #stale-banner-pull-btn,
+    #stale-banner-dismiss-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    #stale-banner-pull-btn:hover,
+    #stale-banner-dismiss-btn:hover { border-color: var(--accent-dim); }
+
+    @media (max-width: 440px) {
+      main { padding: 12px; }
+      #question-text { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>BlitzBürger</h1>
+    <nav>
+      <button class="tab-btn active" data-screen="quiz">Quiz</button>
+      <button class="tab-btn" data-screen="stats">Stats</button>
+      <button class="tab-btn" data-screen="settings">Settings</button>
+    </nav>
+  </header>
+
+  <div id="stale-banner" hidden>
+    <span id="stale-banner-text"></span>
+    <button id="stale-banner-pull-btn">Pull</button>
+    <button id="stale-banner-dismiss-btn">Ignorieren</button>
+  </div>
+
+  <main>
+    <section id="screen-quiz">
+      <div id="quiz-progress"></div>
+      <div id="question-text"></div>
+      <img id="question-image" hidden alt="">
+      <div id="choices">
+        <button class="choice-btn" data-choice="0"></button>
+        <button class="choice-btn" data-choice="1"></button>
+        <button class="choice-btn" data-choice="2"></button>
+        <button class="choice-btn" data-choice="3"></button>
+      </div>
+      <div id="quiz-empty" hidden>Alles gemeistert — komm später wieder.</div>
+    </section>
+
+    <section id="screen-stats" hidden>
+      <div class="stats-summary-row">
+        <div class="stat-tile">
+          <div class="stat-tile-value" id="stats-mastered">0</div>
+          <div class="stat-tile-label">Gemeistert</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile-value" id="stats-total">0</div>
+          <div class="stat-tile-label">Fragen gesamt</div>
+        </div>
+      </div>
+      <div id="stats-problems-title">Schwachstellen</div>
+      <ul id="stats-problems"></ul>
+      <div id="stats-problems-empty" hidden>Noch keine Daten.</div>
+    </section>
+
+    <section id="screen-settings" hidden>
+      <div class="settings-group">
+        <div class="settings-group-title">Status</div>
+        <div id="sync-status-label"></div>
+        <div class="sync-status-rows">
+          <div>Lokal geändert: <span id="sync-ts-local"></span></div>
+          <div>Zuletzt gepusht: <span id="sync-ts-pushed"></span></div>
+          <div>Zuletzt gepullt: <span id="sync-ts-pulled"></span></div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Sync</div>
+        <input id="sync-code-input" type="text" placeholder="Sync-Code" autocomplete="off" spellcheck="false">
+        <div class="btn-row">
+          <button class="settings-btn" id="new-code-btn">Get a new code</button>
+        </div>
+        <div class="btn-row">
+          <button class="settings-btn" id="push-btn">Push</button>
+          <button class="settings-btn" id="pull-btn">Pull</button>
+        </div>
+        <div id="sync-status"></div>
+        <div class="settings-hint">Code auf dem anderen Gerät ins gleiche Feld einfügen und Pull drücken.</div>
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-group-title">Backup</div>
+        <div class="btn-row">
+          <button class="settings-btn" id="export-btn">Export JSON</button>
+          <label class="file-btn" for="import-input">Import JSON</label>
+          <input id="import-input" type="file" accept="application/json" hidden>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="questions.js"></script>
+  <script src="quiz-logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
