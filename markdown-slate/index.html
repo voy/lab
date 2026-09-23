@@ -715,9 +715,20 @@
   // reopen the pane on release, not silently re-collapse to where it started
   let stateChangedDuringDrag = false;
 
+  // A plain click on a collapsed edge reopens the pane (see endDrag below).
+  // That reopen is deferred by REOPEN_DELAY_MS so the splitter stays parked
+  // at the edge for a moment — if it moved immediately, a genuine second
+  // click of a double-click would land on the now-relocated splitter's old
+  // spot instead of the splitter itself, and land as a flash of the old
+  // ratio before the dblclick handler corrected it to 50/50. Staying put
+  // lets the browser's native dblclick fire on the splitter as normal.
+  let reopenTimer = null;
+  const REOPEN_DELAY_MS = 350;
+
   splitter.addEventListener('pointerdown', e => {
     e.preventDefault();
     try { splitter.setPointerCapture(e.pointerId); } catch {}
+    clearTimeout(reopenTimer);
     dragging = true;
     moved = false;
     stateChangedDuringDrag = false;
@@ -757,13 +768,17 @@
     // a click (no drag), or a drag that never actually escaped the starting
     // collapsed state, both pull the collapsed pane back out — only a drag
     // that visibly changed state at some point counts as intentional
-    if ((!moved || !stateChangedDuringDrag) && state !== 'split') setState('split');
+    if ((!moved || !stateChangedDuringDrag) && state !== 'split') {
+      if (moved) setState('split');
+      else reopenTimer = setTimeout(() => setState('split'), REOPEN_DELAY_MS);
+    }
   }
 
   splitter.addEventListener('pointerup', endDrag);
   splitter.addEventListener('lostpointercapture', endDrag);
 
   splitter.addEventListener('dblclick', () => {
+    clearTimeout(reopenTimer);
     setState('split');
     setSplit(null);
   });
